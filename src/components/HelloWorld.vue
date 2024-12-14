@@ -202,7 +202,7 @@ const updateCropBoxPosition = () => {
 
 // 修改裁剪框拖动处理
 const handleCropBoxMouseDown = (e) => {
-  if (currentTool.value === 'mosaic') return // 马赛克模式下禁止拖动裁剪框
+  if (['mosaic', 'brush'].includes(currentTool.value)) return // 马赛克和画笔模式下都禁止拖动裁剪框
   
   e.preventDefault()
   cropArea.value.isDragging = true
@@ -286,7 +286,7 @@ const handleMouseDown = (e) => {
     }
   }
 
-  // 如果不是点击在制点上，检查是否点击在裁剪框上
+  // 如果不是点击在制点上，检查是否点击在���剪框上
   if (
     offsetX >= area.x &&
     offsetX <= area.x + area.width &&
@@ -566,7 +566,7 @@ const handleScale = (value) => {
   )
 }
 
-// 修改位置控制方法
+// 修改位���控制方法
 const handlePositionChange = (axis, value) => {
   if (!cropArea.value || !canvasRef.value) return
   
@@ -575,7 +575,7 @@ const handlePositionChange = (axis, value) => {
   
   const img = imagePosition.value
   
-  // 直接使用相对坐标，不需要��虑负值
+  // 直接使用相对坐标，不需要虑负值
   if (axis === 'x') {
     cropArea.value.x = img.x + Math.min(newValue, img.width - cropArea.value.width)
   } else {
@@ -626,22 +626,34 @@ const handleQuickPosition = (position) => {
   updateCropBoxPosition()
 }
 
-// 添加工具相关状��
+// 添加工具相关状态
 const currentTool = ref(null)
 const isDrawing = ref(false)
 const lastPos = ref({ x: 0, y: 0 })
 
-// 切换工具
+// 修改切换工具方法
 const toggleTool = (tool) => {
+  console.log('toggleTool', tool, currentTool.value);
+  
   if (currentTool.value === tool) {
     currentTool.value = null
     canvasRef.value.style.cursor = 'default'
-    cropBoxRef.value.style.pointerEvents = 'auto' // 恢复裁剪框交互
+    cropBoxRef.value.style.pointerEvents = 'auto'
   } else {
     currentTool.value = tool
-    if (tool === 'mosaic') {
+    if (['mosaic', 'brush'].includes(tool)) {  // 马赛克和画笔工具都需要禁用裁剪框
+      console.log('进来来没')
       canvasRef.value.style.cursor = 'crosshair'
-      cropBoxRef.value.style.pointerEvents = 'none' // 禁用裁剪框交互
+      cropBoxRef.value.style.pointerEvents = 'none'
+      
+      // 设置画笔样式
+      if (tool === 'brush') {
+        const ctx = canvasRef.value.getContext('2d')
+        ctx.strokeStyle = brushColor.value
+        ctx.lineWidth = brushSize.value
+        ctx.lineCap = 'round'
+        ctx.lineJoin = 'round'
+      }
     }
   }
 }
@@ -657,10 +669,19 @@ const handleCanvasMouseDown = (e) => {
     y: e.clientY - rect.top
   }
   
-  if (currentTool.value === 'mosaic') {
+  // 开始新的路径
+  if (currentTool.value === 'brush') {
+    const ctx = canvasRef.value.getContext('2d')
+    ctx.beginPath()
+    ctx.moveTo(lastPos.value.x, lastPos.value.y)
+    ctx.lineTo(lastPos.value.x, lastPos.value.y)
+    ctx.strokeStyle = brushColor.value
+    ctx.lineWidth = brushSize.value
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    ctx.stroke()
+  } else if (currentTool.value === 'mosaic') {
     drawMosaic(lastPos.value.x, lastPos.value.y)
-  } else if (currentTool.value === 'brush') {
-    drawBrush(lastPos.value.x, lastPos.value.y)
   }
 }
 
@@ -671,16 +692,28 @@ const handleCanvasMouseMove = (e) => {
   const x = e.clientX - rect.left
   const y = e.clientY - rect.top
   
-  if (currentTool.value === 'mosaic') {
+  if (currentTool.value === 'brush') {
+    const ctx = canvasRef.value.getContext('2d')
+    ctx.beginPath()
+    ctx.moveTo(lastPos.value.x, lastPos.value.y)
+    ctx.lineTo(x, y)
+    ctx.strokeStyle = brushColor.value
+    ctx.lineWidth = brushSize.value
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    ctx.stroke()
+  } else if (currentTool.value === 'mosaic') {
     drawMosaic(x, y)
-  } else if (currentTool.value === 'brush') {
-    drawBrush(x, y)
   }
   
   lastPos.value = { x, y }
 }
 
 const handleCanvasMouseUp = () => {
+  if (isDrawing.value && currentTool.value === 'brush') {
+    // 保存当前画布状态
+    brushHistory.value.push(canvasRef.value.toDataURL())
+  }
   isDrawing.value = false
 }
 
@@ -736,7 +769,7 @@ const getLinePoints = (x1, y1, x2, y2) => {
   return points
 }
 
-// 获取区域平均颜色
+// 获区域平均颜色
 const getAverageColor = (data) => {
   let r = 0, g = 0, b = 0
   const count = data.length / 4
@@ -754,34 +787,23 @@ const getAverageColor = (data) => {
   }
 }
 
-
-
 // 添加画笔相关状态
 const brushColor = ref('#FF0000') // 默认红色
 const brushSize = ref(5) // 默认大小
+const brushHistory = ref([]) // 用于保存绘制历史
 
-
-// 添加画笔绘制方法
-const drawBrush = (x, y) => {
-  const ctx = canvasRef.value.getContext('2d')
-  const points = getLinePoints(lastPos.value.x, lastPos.value.y, x, y)
-  
-  ctx.beginPath()
-  ctx.moveTo(lastPos.value.x, lastPos.value.y)
-  ctx.lineTo(x, y)
-  ctx.strokeStyle = brushColor.value
-  ctx.lineWidth = brushSize.value
-  ctx.lineCap = 'round'
-  ctx.lineJoin = 'round'
-  ctx.stroke()
-  
-  // 在线段端点绘制圆形，使线条更平滑
-  points.forEach(point => {
-    ctx.beginPath()
-    ctx.arc(point.x, point.y, brushSize.value / 2, 0, Math.PI * 2)
-    ctx.fillStyle = brushColor.value
-    ctx.fill()
-  })
+// 添加撤销功能
+const undoDrawing = () => {
+  if (brushHistory.value.length > 0) {
+    const previousState = brushHistory.value.pop()
+    const img = new Image()
+    img.onload = () => {
+      const ctx = canvasRef.value.getContext('2d')
+      ctx.clearRect(0, 0, canvasRef.value.width, canvasRef.value.height)
+      ctx.drawImage(img, 0, 0)
+    }
+    img.src = previousState
+  }
 }
 
 </script>
@@ -978,7 +1000,7 @@ const drawBrush = (x, y) => {
             ref="cropBoxRef"
             class="crop-box"
             @mousedown="handleCropBoxMouseDown"
-            :style="{ pointerEvents: currentTool === 'mosaic' ? 'none' : 'auto' }"
+            :style="{ pointerEvents: ['mosaic', 'brush'].includes(currentTool) ? 'none' : 'auto' }"
           >
             <!-- 四角的控制点 -->
             <div 
@@ -1214,7 +1236,7 @@ const drawBrush = (x, y) => {
   background-color: #45a049;
 }
 
-/* 响应式设计 */
+/* 应式设计 */
 @media (max-width: 768px) {
   .container {
     flex-direction: column;
