@@ -2,7 +2,7 @@
 import { ref, onMounted, nextTick, computed } from 'vue'
 import { ElCollapse, ElCollapseItem, ElButton, ElInput,ElTooltip } from 'element-plus'
 import 'element-plus/dist/index.css'
-import { Camera } from '@element-plus/icons-vue'
+import { Camera, Edit } from '@element-plus/icons-vue'
 const imgUrl = ref('')
 const canvasRef = ref(null)
 const cropBoxRef = ref(null)
@@ -575,7 +575,7 @@ const handlePositionChange = (axis, value) => {
   
   const img = imagePosition.value
   
-  // 直接使用相对坐标，不需要考虑负值
+  // 直接使用相对坐标，不需要��虑负值
   if (axis === 'x') {
     cropArea.value.x = img.x + Math.min(newValue, img.width - cropArea.value.width)
   } else {
@@ -626,7 +626,7 @@ const handleQuickPosition = (position) => {
   updateCropBoxPosition()
 }
 
-// 添加工具相关状态
+// 添加工具相关状��
 const currentTool = ref(null)
 const isDrawing = ref(false)
 const lastPos = ref({ x: 0, y: 0 })
@@ -648,7 +648,7 @@ const toggleTool = (tool) => {
 
 // 修改马赛克绘制处理
 const handleCanvasMouseDown = (e) => {
-  if (currentTool.value !== 'mosaic') return
+  if (!currentTool.value || !['mosaic', 'brush'].includes(currentTool.value)) return
   
   isDrawing.value = true
   const rect = canvasRef.value.getBoundingClientRect()
@@ -657,18 +657,26 @@ const handleCanvasMouseDown = (e) => {
     y: e.clientY - rect.top
   }
   
-  // 立即开始绘制第一个马赛克块
-  drawMosaic(lastPos.value.x, lastPos.value.y)
+  if (currentTool.value === 'mosaic') {
+    drawMosaic(lastPos.value.x, lastPos.value.y)
+  } else if (currentTool.value === 'brush') {
+    drawBrush(lastPos.value.x, lastPos.value.y)
+  }
 }
 
 const handleCanvasMouseMove = (e) => {
-  if (!isDrawing.value || currentTool.value !== 'mosaic') return
+  if (!isDrawing.value || !currentTool.value) return
   
   const rect = canvasRef.value.getBoundingClientRect()
   const x = e.clientX - rect.left
   const y = e.clientY - rect.top
   
-  drawMosaic(x, y)
+  if (currentTool.value === 'mosaic') {
+    drawMosaic(x, y)
+  } else if (currentTool.value === 'brush') {
+    drawBrush(x, y)
+  }
+  
   lastPos.value = { x, y }
 }
 
@@ -746,15 +754,36 @@ const getAverageColor = (data) => {
   }
 }
 
-// 添加画布事件监听
-onMounted(() => {
-  if (canvasRef.value) {
-    canvasRef.value.addEventListener('mousedown', handleCanvasMouseDown)
-    canvasRef.value.addEventListener('mousemove', handleCanvasMouseMove)
-    canvasRef.value.addEventListener('mouseup', handleCanvasMouseUp)
-    canvasRef.value.addEventListener('mouseleave', handleCanvasMouseUp)
-  }
-})
+
+
+// 添加画笔相关状态
+const brushColor = ref('#FF0000') // 默认红色
+const brushSize = ref(5) // 默认大小
+
+
+// 添加画笔绘制方法
+const drawBrush = (x, y) => {
+  const ctx = canvasRef.value.getContext('2d')
+  const points = getLinePoints(lastPos.value.x, lastPos.value.y, x, y)
+  
+  ctx.beginPath()
+  ctx.moveTo(lastPos.value.x, lastPos.value.y)
+  ctx.lineTo(x, y)
+  ctx.strokeStyle = brushColor.value
+  ctx.lineWidth = brushSize.value
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  ctx.stroke()
+  
+  // 在线段端点绘制圆形，使线条更平滑
+  points.forEach(point => {
+    ctx.beginPath()
+    ctx.arc(point.x, point.y, brushSize.value / 2, 0, Math.PI * 2)
+    ctx.fillStyle = brushColor.value
+    ctx.fill()
+  })
+}
+
 </script>
 
 <template>
@@ -1001,7 +1030,16 @@ onMounted(() => {
             <Camera style="width: 1em; height: 1em;" />
           </div>
         </el-tooltip>
-        <!-- 后续可以添加更多工具 -->
+        
+        <el-tooltip content="画笔" placement="top">
+          <div 
+            class="tool-item"
+            :class="{ active: currentTool === 'brush' }"
+            @click="toggleTool('brush')"
+          >
+            <Edit style="width: 1em; height: 1em;" />
+          </div>
+        </el-tooltip>
       </div>
     </div>
   </div>
@@ -1044,7 +1082,7 @@ onMounted(() => {
   width: 24px;
 }
 
-/* 作按钮器 */
+/* 操作按钮器 */
 .action-buttons {
   margin-top: auto;
   padding-top: 16px;
@@ -1452,7 +1490,7 @@ onMounted(() => {
   gap: 8px;
 }
 
-/* 覆盖 Element Plus 的一些���认样式 */
+/* 覆盖 Element Plus 的一些认样式 */
 :deep(.el-collapse-item__header) {
   background-color: white;
   border-radius: 6px;
@@ -1845,7 +1883,7 @@ onMounted(() => {
   border-radius: 8px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px; /* 增加工具之间的间距 */
 }
 
 .tool-item {
