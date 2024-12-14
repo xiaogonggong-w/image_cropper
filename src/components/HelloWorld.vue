@@ -286,7 +286,7 @@ const handleMouseDown = (e) => {
     }
   }
 
-  // 如果不是点击在制点上，检查是否点击在���剪框上
+  // 如果不是点击在制点上，检查是否点击在裁剪框上
   if (
     offsetX >= area.x &&
     offsetX <= area.x + area.width &&
@@ -422,7 +422,7 @@ const handleResizeMouseDown = (e, position) => {
           newWidth = startWidth - (newX - startLeft)
         }
         if (startTop + startHeight + deltaY <= canvas.height) {
-          // 只处理下边界
+          // 只��理下边界
           newHeight = Math.max(minSize, startHeight + deltaY)
         }
         break
@@ -566,7 +566,7 @@ const handleScale = (value) => {
   )
 }
 
-// 修改位���控制方法
+// 修改位置控制方法
 const handlePositionChange = (axis, value) => {
   if (!cropArea.value || !canvasRef.value) return
   
@@ -658,30 +658,71 @@ const toggleTool = (tool) => {
   }
 }
 
-// 修改马赛克绘制处理
+// 添加检查点是否在裁剪框内的方法
+const isPointInCropArea = (x, y) => {
+  const area = cropArea.value
+  return (
+    x >= area.x &&
+    x <= area.x + area.width &&
+    y >= area.y &&
+    y <= area.y + area.height
+  )
+}
+
+// 修改马赛克绘制方法
+const drawMosaic = (x, y) => {
+  if (!isPointInCropArea(x, y)) return
+  
+  const ctx = canvasRef.value.getContext('2d')
+  const size = 10 // 马赛克块大小
+  
+  // 获取起点和终点之间的所有点
+  const points = getLinePoints(lastPos.value.x, lastPos.value.y, x, y)
+  
+  points.forEach(point => {
+    if (!isPointInCropArea(point.x, point.y)) return
+    
+    // 对齐到网格
+    const gridX = Math.floor(point.x / size) * size
+    const gridY = Math.floor(point.y / size) * size
+    
+    // 获取区域的平均颜色
+    const imageData = ctx.getImageData(gridX, gridY, size, size)
+    const color = getAverageColor(imageData.data)
+    
+    // 填充马赛克块
+    ctx.fillStyle = `rgb(${color.r}, ${color.g}, ${color.b})`
+    ctx.fillRect(gridX, gridY, size, size)
+  })
+}
+
+// 修改画笔绘制处理
 const handleCanvasMouseDown = (e) => {
   if (!currentTool.value || !['mosaic', 'brush'].includes(currentTool.value)) return
   
-  isDrawing.value = true
   const rect = canvasRef.value.getBoundingClientRect()
-  lastPos.value = {
-    x: e.clientX - rect.left,
-    y: e.clientY - rect.top
-  }
+  const x = e.clientX - rect.left
+  const y = e.clientY - rect.top
+  
+  // 检查起始点是否在裁剪框内
+  if (!isPointInCropArea(x, y)) return
+  
+  isDrawing.value = true
+  lastPos.value = { x, y }
   
   // 开始新的路径
   if (currentTool.value === 'brush') {
     const ctx = canvasRef.value.getContext('2d')
     ctx.beginPath()
-    ctx.moveTo(lastPos.value.x, lastPos.value.y)
-    ctx.lineTo(lastPos.value.x, lastPos.value.y)
+    ctx.moveTo(x, y)
+    ctx.lineTo(x, y)
     ctx.strokeStyle = brushColor.value
     ctx.lineWidth = brushSize.value
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
     ctx.stroke()
   } else if (currentTool.value === 'mosaic') {
-    drawMosaic(lastPos.value.x, lastPos.value.y)
+    drawMosaic(x, y)
   }
 }
 
@@ -694,6 +735,14 @@ const handleCanvasMouseMove = (e) => {
   
   if (currentTool.value === 'brush') {
     const ctx = canvasRef.value.getContext('2d')
+    
+    // 使用裁剪区域限制绘制范围
+    ctx.save()
+    ctx.beginPath()
+    ctx.rect(cropArea.value.x, cropArea.value.y, cropArea.value.width, cropArea.value.height)
+    ctx.clip()
+    
+    // 绘制线条
     ctx.beginPath()
     ctx.moveTo(lastPos.value.x, lastPos.value.y)
     ctx.lineTo(x, y)
@@ -702,6 +751,8 @@ const handleCanvasMouseMove = (e) => {
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
     ctx.stroke()
+    
+    ctx.restore()
   } else if (currentTool.value === 'mosaic') {
     drawMosaic(x, y)
   }
@@ -715,29 +766,6 @@ const handleCanvasMouseUp = () => {
     brushHistory.value.push(canvasRef.value.toDataURL())
   }
   isDrawing.value = false
-}
-
-// 修改绘制马赛克方法
-const drawMosaic = (x, y) => {
-  const ctx = canvasRef.value.getContext('2d')
-  const size = 10 // 马赛克块大小
-  
-  // 获取起点和终点之间的所有点
-  const points = getLinePoints(lastPos.value.x, lastPos.value.y, x, y)
-  
-  points.forEach(point => {
-    // 对齐到网格
-    const gridX = Math.floor(point.x / size) * size
-    const gridY = Math.floor(point.y / size) * size
-    
-    // 获取区域的平均颜色
-    const imageData = ctx.getImageData(gridX, gridY, size, size)
-    const color = getAverageColor(imageData.data)
-    
-    // 填充马赛克块
-    ctx.fillStyle = `rgb(${color.r}, ${color.g}, ${color.b})`
-    ctx.fillRect(gridX, gridY, size, size)
-  })
 }
 
 // 获取两点之间的所有点
@@ -1697,7 +1725,7 @@ const undoDrawing = () => {
   cursor: crosshair;
 }
 
-/* 裁剪框样式 */
+/* ���剪框样式 */
 .crop-box {
   position: absolute;
   border: 2px solid #fff;
@@ -1780,7 +1808,7 @@ const undoDrawing = () => {
   cursor: w-resize;
 }
 
-/* 添加尺寸输入框样式 */
+/* 添加尺��输入框样式 */
 .size-inputs {
   display: flex;
   flex-direction: column;
