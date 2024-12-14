@@ -38,7 +38,7 @@ const handleRotate = (value) => {
   if (typeof value === 'number') {
     rotateAngle.value = ((rotateAngle.value + value) % 360 + 360) % 360
   } else {
-    // 如果是输入框输入的值，直接设置角度
+    // 如果是输入框输入的值，直接设置角���
     const angle = parseInt(value)
     if (isNaN(angle)) return
     rotateAngle.value = ((angle % 360) + 360) % 360
@@ -492,6 +492,53 @@ const handleSizeChange = (type, value) => {
     drawImage(originalImage.value)
   }
 }
+
+// 添加缩放状态
+const scale = ref(100) // 初始缩放比例为100%
+
+// 添加缩放处理方法
+const handleScale = (value) => {
+  if (!canvasRef.value || !originalImage.value) return
+  
+  let newScale
+  if (typeof value === 'number') {
+    // 按钮点击，增加或减少缩放
+    newScale = Math.min(200, Math.max(10, scale.value + value))
+  } else {
+    // 输入框输入
+    newScale = Math.min(200, Math.max(10, parseInt(value) || 100))
+  }
+  
+  scale.value = newScale
+  
+  // 获取画布上下文
+  const ctx = canvasRef.value.getContext('2d')
+  const canvas = canvasRef.value
+  
+  // 清空画布
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  
+  // 计算基础缩放比例
+  const baseScale = Math.min(
+    canvas.width / originalImage.value.width,
+    canvas.height / originalImage.value.height
+  )
+  
+  // 应用额外的缩放
+  const finalScale = baseScale * (newScale / 100)
+  
+  // 计算居中位置
+  const x = (canvas.width - originalImage.value.width * finalScale) / 2
+  const y = (canvas.height - originalImage.value.height * finalScale) / 2
+  
+  // 绘制图片
+  ctx.drawImage(
+    originalImage.value,
+    x, y,
+    originalImage.value.width * finalScale,
+    originalImage.value.height * finalScale
+  )
+}
 </script>
 
 <template>
@@ -547,6 +594,33 @@ const handleSizeChange = (type, value) => {
           <div class="rotate-buttons">
             <el-button @click="handleRotate(-90)">左转90°</el-button>
             <el-button @click="handleRotate(90)">右转90°</el-button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 缩放控制面板 -->
+      <div class="size-panel">
+        <div class="panel-title">缩放控制</div>
+        <div class="size-inputs">
+          <div class="size-input-group">
+            <span class="size-label">缩放</span>
+            <el-input
+              v-model.number="scale"
+              type="number"
+              :min="10"
+              :max="200"
+              @input="handleScale"
+            >
+              <template #append>%</template>
+            </el-input>
+          </div>
+          <!-- 快捷缩放按钮 -->
+          <div class="scale-buttons">
+            <el-button @click="handleScale(-10)">缩小10%</el-button>
+            <el-button @click="handleScale(10)">放大10%</el-button>
+          </div>
+          <div class="scale-buttons">
+            <el-button @click="handleScale(100 - scale)">重置(100%)</el-button>
           </div>
         </div>
       </div>
@@ -1448,5 +1522,15 @@ const handleSizeChange = (type, value) => {
 /* 确保输入框和按钮样式统一 */
 :deep(.el-input-number) {
   width: 100%;
+}
+
+/* 添加缩放按钮样式 */
+.scale-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.scale-buttons .el-button {
+  flex: 1;
 }
 </style>
