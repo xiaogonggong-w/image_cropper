@@ -759,7 +759,7 @@ onMounted(() => {
 
 <template>
   <div class="container">
-    <!-- 工具面板 -->
+    <!-- 左侧配置面板 -->
     <div class="tools-panel">
       <!-- 尺寸调整输入框 -->
       <div class="size-panel">
@@ -905,14 +905,10 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- 编辑区域 -->
+    <!-- 右侧编辑区域 -->
     <div class="content-panel">
-      <div 
-        ref="containerRef"
-        class="editor-container"
-        @drop="handleDrop"
-        @dragover.prevent
-      >
+      <!-- 编辑器容器 -->
+      <div ref="containerRef" class="editor-container">
         <div v-if="!originalImage" class="upload-area">
           <input 
             type="file" 
@@ -991,24 +987,21 @@ onMounted(() => {
               @mousedown="(e) => handleResizeMouseDown(e, 'left')"
             ></div>
           </div>
-          
-          <!-- 底部工具栏 -->
-          <div class="bottom-toolbar">
-            <el-tooltip
-             placement="top"
-             content="马赛克"
-            >
-              <div 
-              class="tool-item"
-              :class="{ active: currentTool === 'mosaic' }"
-              @click="toggleTool('mosaic')"
-            >
-               <Camera style="width: 1em; height: 1em;"> </Camera>
-            </div>
-            </el-tooltip>
-            <!-- 后续可以添加更多工具 -->
-          </div>
         </template>
+      </div>
+
+      <!-- 底部工具栏 -->
+      <div v-if="originalImage" class="bottom-toolbar">
+        <el-tooltip content="马赛克" placement="top">
+          <div 
+            class="tool-item"
+            :class="{ active: currentTool === 'mosaic' }"
+            @click="toggleTool('mosaic')"
+          >
+            <Camera style="width: 1em; height: 1em;" />
+          </div>
+        </el-tooltip>
+        <!-- 后续可以添加更多工具 -->
       </div>
     </div>
   </div>
@@ -1038,6 +1031,7 @@ onMounted(() => {
   padding: 16px;
   display: flex;
   flex-direction: column;
+  gap: 16px;
   height: 100%;
   background: #f5f5f5;
 }
@@ -1458,7 +1452,7 @@ onMounted(() => {
   gap: 8px;
 }
 
-/* 覆盖 Element Plus 的一些默认样式 */
+/* 覆盖 Element Plus 的一些���认样式 */
 :deep(.el-collapse-item__header) {
   background-color: white;
   border-radius: 6px;
@@ -1629,8 +1623,7 @@ onMounted(() => {
 }
 
 .editor-container {
-  width: 100%;
-  height: 100%;
+  flex: 1;
   position: relative;
   background: white;
   border-radius: 8px;
@@ -1835,22 +1828,35 @@ onMounted(() => {
   font-size: 12px;
 }
 
-/* 添加底部工具栏样式 */
+/* 修改编辑区域布局 */
+.editor-wrapper {
+  display: none;
+}
+
+.side-toolbar {
+  display: none;
+}
+
+/* 底部工具栏样式 */
 .bottom-toolbar {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  padding: 12px;
+  height: 48px;
+  padding: 0 16px;
   background: white;
+  border-radius: 8px;
   display: flex;
+  align-items: center;
   gap: 8px;
-  border-top: 1px solid #eee;
 }
 
 .tool-item {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
   background: #f5f5f5;
+  border-radius: 4px;
   transition: all 0.2s;
 }
 
@@ -1861,30 +1867,5 @@ onMounted(() => {
 .tool-item.active {
   background: #e3f2fd;
   border: 2px solid #1976d2;
-}
-
-.tool-icon {
-  font-size: 20px;
-}
-
-.tool-label {
-  font-size: 14px;
-  color: #333;
-}
-
-/* 修改画布样式 */
-.editor-canvas {
-  cursor: crosshair;
-  user-select: none; /* 防止拖动时选中文本 */
-}
-
-.editor-canvas.drawing {
-  cursor: none;
-}
-
-/* 修改裁剪框样式 */
-.crop-box {
-  /* ... 其他样式保持不变 ... */
-  transition: pointer-events 0.2s; /* 添加过渡效果 */
 }
 </style>
