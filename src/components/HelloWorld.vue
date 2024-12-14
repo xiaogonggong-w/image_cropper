@@ -277,7 +277,6 @@ const handleResizeMouseDown = (e, position) => {
     const minSize = 50
     const canvas = canvasRef.value
 
-    // 临时变量存储新的位置和尺寸
     let newX = cropArea.value.x
     let newY = cropArea.value.y
     let newWidth = cropArea.value.width
@@ -331,9 +330,34 @@ const handleResizeMouseDown = (e, position) => {
           newHeight = Math.max(minSize, startHeight + deltaY)
         }
         break
+
+      case 'top':
+        if (deltaY < startHeight - minSize) {
+          newY = Math.max(0, startTop + deltaY)
+          newHeight = startHeight - (newY - startTop)
+        }
+        break
+        
+      case 'right':
+        if (startLeft + startWidth + deltaX <= canvas.width) {
+          newWidth = Math.max(minSize, startWidth + deltaX)
+        }
+        break
+        
+      case 'bottom':
+        if (startTop + startHeight + deltaY <= canvas.height) {
+          newHeight = Math.max(minSize, startHeight + deltaY)
+        }
+        break
+        
+      case 'left':
+        if (deltaX < startWidth - minSize) {
+          newX = Math.max(0, startLeft + deltaX)
+          newWidth = startWidth - (newX - startLeft)
+        }
+        break
     }
 
-    // 更新裁剪框的位置和尺寸
     cropArea.value.x = newX
     cropArea.value.y = newY
     cropArea.value.width = newWidth
@@ -443,22 +467,40 @@ const handleResizeMouseDown = (e, position) => {
             class="crop-box"
             @mousedown="handleCropBoxMouseDown"
           >
-            <!-- 调整大小的控制点 -->
+            <!-- 四角的控制点 -->
             <div 
-              class="resize-handle top-left"
+              class="resize-handle corner top-left"
               @mousedown="(e) => handleResizeMouseDown(e, 'top-left')"
             ></div>
             <div 
-              class="resize-handle top-right"
+              class="resize-handle corner top-right"
               @mousedown="(e) => handleResizeMouseDown(e, 'top-right')"
             ></div>
             <div 
-              class="resize-handle bottom-left"
+              class="resize-handle corner bottom-left"
               @mousedown="(e) => handleResizeMouseDown(e, 'bottom-left')"
             ></div>
             <div 
-              class="resize-handle bottom-right"
+              class="resize-handle corner bottom-right"
               @mousedown="(e) => handleResizeMouseDown(e, 'bottom-right')"
+            ></div>
+
+            <!-- 边的中点控制点 -->
+            <div 
+              class="resize-handle edge top"
+              @mousedown="(e) => handleResizeMouseDown(e, 'top')"
+            ></div>
+            <div 
+              class="resize-handle edge right"
+              @mousedown="(e) => handleResizeMouseDown(e, 'right')"
+            ></div>
+            <div 
+              class="resize-handle edge bottom"
+              @mousedown="(e) => handleResizeMouseDown(e, 'bottom')"
+            ></div>
+            <div 
+              class="resize-handle edge left"
+              @mousedown="(e) => handleResizeMouseDown(e, 'left')"
             ></div>
           </div>
         </template>
@@ -797,7 +839,7 @@ const handleResizeMouseDown = (e, position) => {
   text-align: center;
 }
 
-/* 添加点击空白处关闭拉面板的处理 */
+/* 添加点击空白处关闭拉面���的处理 */
 @media (max-width: 768px) {
   .ratio-options {
     position: fixed;
@@ -1139,5 +1181,39 @@ const handleResizeMouseDown = (e, position) => {
   bottom: -5px;
   right: -5px;
   cursor: se-resize;
+}
+
+/* 调整控制点样式 */
+.resize-handle.edge {
+  width: 8px;
+  height: 8px;
+}
+
+.resize-handle.top {
+  top: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: n-resize;
+}
+
+.resize-handle.right {
+  right: -4px;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: e-resize;
+}
+
+.resize-handle.bottom {
+  bottom: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: s-resize;
+}
+
+.resize-handle.left {
+  left: -4px;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: w-resize;
 }
 </style>
