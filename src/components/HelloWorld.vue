@@ -38,7 +38,7 @@ const handleRotate = (value) => {
   if (typeof value === 'number') {
     rotateAngle.value = ((rotateAngle.value + value) % 360 + 360) % 360
   } else {
-    // 如果是输入框输入的值，直接设置角���
+    // 如果是输入框输入的值，直接设置角度
     const angle = parseInt(value)
     if (isNaN(angle)) return
     rotateAngle.value = ((angle % 360) + 360) % 360
@@ -114,6 +114,15 @@ const initCanvas = (image) => {
   const x = (canvas.width - scaledWidth) / 2
   const y = (canvas.height - scaledHeight) / 2
   
+  // 记录图片位置
+  imagePosition.value = {
+    x,
+    y,
+    width: scaledWidth,
+    height: scaledHeight,
+    scale
+  }
+  
   // 绘制图片
   ctx.drawImage(
     image,
@@ -122,13 +131,13 @@ const initCanvas = (image) => {
     scaledHeight
   )
   
-  // 初始化裁剪框位置 - 居中显示
-  const cropWidth = Math.min(scaledWidth * 0.8, canvas.width * 0.8) // 取图片宽度和画布宽度的80%中较小的值
-  const cropHeight = cropWidth * 9 / 16 // 默认16:9比例
+  // 初始化裁剪框位置 - 居中显示，基于图片位置
+  const cropWidth = Math.min(scaledWidth * 0.8, canvas.width * 0.8)
+  const cropHeight = cropWidth * 9 / 16
   
   cropArea.value = {
-    x: (canvas.width - cropWidth) / 2,
-    y: (canvas.height - cropHeight) / 2,
+    x: x + (scaledWidth - cropWidth) / 2,  // 基于图片位置居中
+    y: y + (scaledHeight - cropHeight) / 2, // 基于图片位置居中
     width: cropWidth,
     height: cropHeight,
     isDragging: false,
@@ -139,7 +148,10 @@ const initCanvas = (image) => {
   updateCropBoxPosition()
 }
 
-// 绘制图片
+// 添加图片位置状态
+const imagePosition = ref({ x: 0, y: 0, width: 0, height: 0 })
+
+// 修改 drawImage 方法，记录图片位置
 const drawImage = (image) => {
   const canvas = canvasRef.value
   const ctx = canvas.getContext('2d')
@@ -153,15 +165,26 @@ const drawImage = (image) => {
     canvas.height / image.height
   )
   
-  const x = (canvas.width - image.width * scale) / 2
-  const y = (canvas.height - image.height * scale) / 2
+  const scaledWidth = image.width * scale
+  const scaledHeight = image.height * scale
+  const x = (canvas.width - scaledWidth) / 2
+  const y = (canvas.height - scaledHeight) / 2
+  
+  // 记录图片位置 - 这是图片在画布中的实际渲染位置
+  imagePosition.value = {
+    x,
+    y,
+    width: scaledWidth,
+    height: scaledHeight,
+    scale
+  }
   
   // 绘制图片
   ctx.drawImage(
     image,
     x, y,
-    image.width * scale,
-    image.height * scale
+    scaledWidth,
+    scaledHeight
   )
 }
 
@@ -177,7 +200,7 @@ const updateCropBoxPosition = () => {
   cropBoxRef.value.style.height = `${Math.round(area.height)}px`
 }
 
-// 处理裁剪框拖动
+// 修改裁剪框拖动处理
 const handleCropBoxMouseDown = (e) => {
   e.preventDefault()
   cropArea.value.isDragging = true
@@ -190,10 +213,11 @@ const handleCropBoxMouseDown = (e) => {
     
     const newX = e.clientX - startX
     const newY = e.clientY - startY
+    const canvas = canvasRef.value
     
     // 限制在画布范围内
-    cropArea.value.x = Math.max(0, Math.min(canvasRef.value.width - cropArea.value.width, newX))
-    cropArea.value.y = Math.max(0, Math.min(canvasRef.value.height - cropArea.value.height, newY))
+    cropArea.value.x = Math.min(canvas.width - cropArea.value.width, Math.max(0, newX))
+    cropArea.value.y = Math.min(canvas.height - cropArea.value.height, Math.max(0, newY))
     
     updateCropBoxPosition()
   }
@@ -457,7 +481,7 @@ const handleResizeMouseDown = (e, position) => {
   document.addEventListener('mouseup', handleMouseUp)
 }
 
-// 修改尺寸修改处理方法
+// 修改尺寸修改处方法
 const handleSizeChange = (type, value) => {
   if (!cropArea.value || !canvasRef.value) return
   
@@ -502,7 +526,7 @@ const handleScale = (value) => {
   
   let newScale
   if (typeof value === 'number') {
-    // 按钮点击，增加或减少缩放
+    // 按钮点，增加或减少缩放
     newScale = Math.min(200, Math.max(10, scale.value + value))
   } else {
     // 输入框输入
@@ -538,6 +562,66 @@ const handleScale = (value) => {
     originalImage.value.width * finalScale,
     originalImage.value.height * finalScale
   )
+}
+
+// 修改位置控制方法
+const handlePositionChange = (axis, value) => {
+  if (!cropArea.value || !canvasRef.value) return
+  
+  const newValue = Math.round(parseInt(value))
+  if (isNaN(newValue)) return
+  
+  const img = imagePosition.value
+  
+  // 直接使用相对坐标，不需要考虑负值
+  if (axis === 'x') {
+    cropArea.value.x = img.x + Math.min(newValue, img.width - cropArea.value.width)
+  } else {
+    cropArea.value.y = img.y + Math.min(newValue, img.height - cropArea.value.height)
+  }
+  
+  updateCropBoxPosition()
+}
+
+// 修改快捷位置处理方法
+const handleQuickPosition = (position) => {
+  if (!cropArea.value || !canvasRef.value) return
+  
+  const img = imagePosition.value
+  const area = cropArea.value
+  
+  switch (position) {
+    case 'left-top':
+      area.x = img.x
+      area.y = img.y
+      break
+    case 'center-top':
+      area.x = img.x + (img.width - area.width) / 2
+      area.y = img.y
+      break
+    case 'right-top':
+      area.x = img.x + img.width - area.width
+      area.y = img.y
+      break
+    case 'center':
+      area.x = img.x + (img.width - area.width) / 2
+      area.y = img.y + (img.height - area.height) / 2
+      break
+    case 'left-bottom':
+      area.x = img.x
+      area.y = img.y + img.height - area.height
+      break
+    case 'center-bottom':
+      area.x = img.x + (img.width - area.width) / 2
+      area.y = img.y + img.height - area.height
+      break
+    case 'right-bottom':
+      area.x = img.x + img.width - area.width
+      area.y = img.y + img.height - area.height
+      break
+  }
+  
+  updateCropBoxPosition()
 }
 </script>
 
@@ -625,6 +709,51 @@ const handleScale = (value) => {
         </div>
       </div>
 
+      <!-- 位置控制面板 -->
+      <div class="size-panel">
+        <div class="panel-title">位置控制</div>
+        <div class="size-inputs">
+          <div class="size-input-group">
+            <span class="size-label">X轴</span>
+            <el-input
+              :model-value="Math.round(cropArea.x - imagePosition.x)"
+              type="number"
+              :min="0"
+              :max="imagePosition.width - cropArea.width"
+              @input="value => handlePositionChange('x', value)"
+            >
+              <template #append>px</template>
+            </el-input>
+          </div>
+          <div class="size-input-group">
+            <span class="size-label">Y轴</span>
+            <el-input
+              :model-value="Math.round(cropArea.y - imagePosition.y)"
+              type="number"
+              :min="0"
+              :max="imagePosition.height - cropArea.height"
+              @input="value => handlePositionChange('y', value)"
+            >
+              <template #append>px</template>
+            </el-input>
+          </div>
+          <!-- 快捷位置按钮 -->
+          <div class="position-buttons">
+            <el-button @click="handleQuickPosition('left-top')">左上</el-button>
+            <el-button @click="handleQuickPosition('center-top')">顶部居中</el-button>
+            <el-button @click="handleQuickPosition('right-top')">右上</el-button>
+          </div>
+          <div class="position-buttons">
+            <el-button @click="handleQuickPosition('center')">居中</el-button>
+          </div>
+          <div class="position-buttons">
+            <el-button @click="handleQuickPosition('left-bottom')">左下</el-button>
+            <el-button @click="handleQuickPosition('center-bottom')">底部居中</el-button>
+            <el-button @click="handleQuickPosition('right-bottom')">右下</el-button>
+          </div>
+        </div>
+      </div>
+
       <!-- 操作按钮 -->
       <div class="action-buttons">
         <el-button 
@@ -669,8 +798,8 @@ const handleScale = (value) => {
               </svg>
             </div>
             <div class="upload-text">
-              <h3>上传图片</h3>
-              <p>点击选择或拖拽图片到此处</p>
+              <h3>上传图��</h3>
+              <p>点击选择或拖拽图到此处</p>
               <span class="upload-hint">持 JPG、PNG、GIF 等格式</span>
             </div>
           </label>
@@ -1532,5 +1661,17 @@ const handleScale = (value) => {
 
 .scale-buttons .el-button {
   flex: 1;
+}
+
+/* 添加位置按钮样式 */
+.position-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.position-buttons .el-button {
+  flex: 1;
+  padding: 6px;
+  font-size: 12px;
 }
 </style>
