@@ -2,12 +2,17 @@
 import { ref, nextTick } from 'vue'
 import 'vue-cropper/dist/index.css'
 import { VueCropper } from 'vue-cropper'
-import { ElCollapse, ElCollapseItem, ElButton, ElInput } from 'element-plus'
+import { ElCollapse, ElCollapseItem, ElButton, ElInput, ElSlider } from 'element-plus'
 import 'element-plus/dist/index.css'
+import { fabric } from 'fabric'
 
 const imgUrl = ref('')
 const cropperRef = ref(null)
 const activeNames = ref([]) // 用于控制当前展开的面板
+
+// 添加 fabric.js 相关状态
+const fabricCanvas = ref(null)
+const isMosaicMode = ref(false)
 
 // 修改配置选项，设置默认为自由裁剪
 const cropOptions = ref({
@@ -28,7 +33,7 @@ const cropOptions = ref({
   original: false,       // 上传图片按照原始比例渲染
   full: true,           // 是否输出原图比例的截图
   enlarge: 1,           // 裁剪图片输出比例
-  high: true,           // 是否照设计dpr 输出等比例图片
+  high: true,           // 是否照设计dpr 输出比例图片
   maxImgSize: 3000,     // 限制图片最大宽度和高度
   
   // 界面设置
@@ -147,7 +152,7 @@ const toggleOption = (option) => {
   }
 }
 
-// 修改配置组定义，调整比例选项的顺序
+// ��改配置组定义，调整比例选项的顺序
 const configGroups = [
   {
     id: 'ratio',
@@ -230,10 +235,22 @@ const handleImage = (file) => {
 // 裁剪完成
 const cropFinish = () => {
   cropperRef.value.getCropData((data) => {
-    // data 为裁剪后的 base64 片数
-    console.log('裁剪后的图片：', data)
-    // 这里可以将裁剪后的图片上传到服务器或进行其他操作
+    // 创建下载链接
+    const link = document.createElement('a')
+    link.href = data
+    link.download = `cropped_image_${Date.now()}.jpg`  // 使用时间戳确保文件名唯一
+    
+    // 触发下载
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
   })
+}
+
+// 实时预览（可选）
+const handleRealTime = (data) => {
+  // 这里可以实时显示裁剪的结果
+  console.log('实时预览：', data)
 }
 
 // 添加拖拽状态处理
@@ -245,6 +262,100 @@ const handleDragEnter = (e) => {
 const handleDragLeave = (e) => {
   e.preventDefault()
   e.currentTarget.setAttribute('data-dragging', 'false')
+}
+
+// 修改工具栏定义
+const tools = [
+  {
+    id: 'mosaic',
+    label: '马赛克',
+    icon: '🔲',
+    action: () => {
+      isMosaicMode.value = !isMosaicMode.value
+      if (isMosaicMode.value) {
+        initFabricCanvas()
+      }
+    }
+  },
+  {
+    id: 'brightness',
+    label: '亮度',
+    icon: '☀️',
+    slider: true,
+    min: -100,
+    max: 100,
+    value: 0,
+    action: (value) => {
+      // 处理亮度调整
+    }
+  },
+  {
+    id: 'contrast',
+    label: '对比度',
+    icon: '🌓',
+    slider: true,
+    min: -100,
+    max: 100,
+    value: 0,
+    action: (value) => {
+      // 处理对比度调整
+    }
+  }
+]
+
+// 初始化 fabric.js 画布
+const initFabricCanvas = () => {
+  if (!cropperRef.value) return
+  
+  cropperRef.value.getCropData((data) => {
+    const container = document.querySelector('.cropper-container')
+    const canvas = document.createElement('canvas')
+    canvas.id = 'fabric-canvas'
+    canvas.style.position = 'absolute'
+    canvas.style.top = '0'
+    canvas.style.left = '0'
+    canvas.style.width = '100%'
+    canvas.style.height = '100%'
+    canvas.style.zIndex = '1000'
+    container.appendChild(canvas)
+    
+    fabricCanvas.value = new fabric.Canvas('fabric-canvas', {
+      width: container.offsetWidth,
+      height: container.offsetHeight,
+      isDrawingMode: true
+    })
+    
+    // 加载裁剪后的图片
+    fabric.Image.fromURL(data, (img) => {
+      img.scaleToWidth(container.offsetWidth)
+      fabricCanvas.value.add(img)
+      
+      // 创建马赛克画笔
+      fabricCanvas.value.freeDrawingBrush = new fabric.PatternBrush(fabricCanvas.value)
+      fabricCanvas.value.freeDrawingBrush.width = 20
+      fabricCanvas.value.freeDrawingBrush.color = 'rgba(0,0,0,0.5)'
+    })
+  })
+}
+
+// 应用马赛克效果
+const applyMosaic = () => {
+  if (!fabricCanvas.value) return
+  
+  const dataURL = fabricCanvas.value.toDataURL({
+    format: 'jpeg',
+    quality: 0.8
+  })
+  
+  imgUrl.value = dataURL
+  isMosaicMode.value = false
+  
+  // 清理 fabric.js 画布
+  fabricCanvas.value.dispose()
+  const canvas = document.getElementById('fabric-canvas')
+  if (canvas) {
+    canvas.remove()
+  }
 }
 </script>
 
@@ -348,7 +459,30 @@ const handleDragLeave = (e) => {
             :img="imgUrl"
             v-bind="cropOptions"
             @cropend="handleCropBoxData"
-            @realTime="cropFinish"
+            @realTime="handleRealTime"
+          />
+        </div>
+      </div>
+
+      <!-- 底部工具栏 -->
+      <div v-if="imgUrl" class="toolbar">
+        <div 
+          v-for="tool in tools" 
+          :key="tool.id"
+          class="tool-item"
+          :class="{ 
+            active: tool.id === 'mosaic' ? isMosaicMode : currentTool === tool.id 
+          }"
+          @click="tool.action"
+        >
+          <span class="tool-icon">{{ tool.icon }}</span>
+          <span class="tool-label">{{ tool.label }}</span>
+          <el-slider
+            v-if="tool.slider && currentTool === tool.id"
+            v-model="tool.value"
+            :min="tool.min"
+            :max="tool.max"
+            @input="tool.action"
           />
         </div>
       </div>
@@ -392,7 +526,7 @@ const handleDragLeave = (e) => {
   width: 24px;
 }
 
-/* 操作按钮容器 */
+/* 作按钮容器 */
 .action-buttons {
   margin-top: auto;
   padding-top: 16px;
@@ -870,5 +1004,75 @@ const handleDragLeave = (e) => {
 
 :deep(.el-input-group__append) {
   padding: 0 8px;
+}
+
+/* 工具栏样式 */
+.toolbar {
+  position: relative;
+  background: #f5f5f5;
+  padding: 12px;
+  display: flex;
+  gap: 16px;
+  border-top: 1px solid #eee;
+  margin-top: 16px;
+  border-radius: 8px;
+}
+
+.tool-item {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.tool-item:hover {
+  background: #f5f5f5;
+}
+
+.tool-item.active {
+  background: #e3f2fd;
+}
+
+.tool-icon {
+  font-size: 20px;
+}
+
+.tool-label {
+  font-size: 14px;
+  color: #333;
+}
+
+/* 滑块样式 */
+:deep(.el-slider) {
+  width: 120px;
+  margin: 0 12px;
+}
+
+/* 添加马赛克画布样式 */
+.cropper-container {
+  position: relative;
+}
+
+.mosaic-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+  z-index: 1000;
+  background: transparent;
+}
+
+/* 修改工具栏样式 */
+.tool-item.active {
+  background: #e3f2fd;
+  border: 2px solid #1976d2;
 }
 </style>
