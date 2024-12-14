@@ -9,17 +9,17 @@ const imgUrl = ref('')
 const cropperRef = ref(null)
 const activeNames = ref([]) // 用于控制当前展开的面板
 
-// 扩展配置选项，添加所有可用的配置
+// 修改配置选项，设置默认为自由裁剪
 const cropOptions = ref({
   // 基础配置
   autoCrop: true,        // 是否自动生成裁剪框
-  autoCropWidth: 480,    // 裁剪框默认宽度 (16:9 = 480:270)
+  autoCropWidth: 480,    // 裁剪框默认宽度
   autoCropHeight: 270,   // 裁剪框默认高度
   
   // 裁剪框行为
-  fixed: false,           // 改为 false，允许自由调整
-  fixedNumber: [16, 9],   // 默认比例，但不强制使用
-  fixedBox: false,        // 不固定裁剪框大小
+  fixed: false,          // 默认不固定比例
+  fixedNumber: [1, 1],   // 默认 1:1 比例（自由裁剪时不生效）
+  fixedBox: false,       // 不固定裁剪框大小
   canMove: true,         
   canMoveBox: true,      
   centerBox: true,       
@@ -68,7 +68,7 @@ const handleCropBoxData = (data) => {
   cropperRef.value.setCropBoxData(newData)
 }
 
-// 修改裁剪比例的方��
+// 修改裁剪比例的方
 const setAspectRatio = (ratio) => {
   console.log('setAspectRatio', ratio)
   if (cropperRef.value) {
@@ -147,16 +147,16 @@ const toggleOption = (option) => {
   }
 }
 
-// 修改配置组定义，移除模式设置组
+// 修改配置组定义，调整比例选项的顺序
 const configGroups = [
   {
     id: 'ratio',
     title: '裁剪比例',
     options: [
+      { value: 0, label: '自由裁剪' },  // 将自由裁剪放在第一位
       { value: 16/9, label: '16:9' },
       { value: 4/3, label: '4:3' },
-      { value: 1, label: '1:1' },
-      { value: 0, label: '自由裁剪' }
+      { value: 1, label: '1:1' }
     ]
   },
   {
