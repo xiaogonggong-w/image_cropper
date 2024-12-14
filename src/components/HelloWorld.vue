@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted, nextTick, computed } from 'vue'
-import { ElCollapse, ElCollapseItem, ElButton, ElInput,ElTooltip } from 'element-plus'
+import { ElCollapse, ElCollapseItem, ElButton, ElInput,ElTooltip,ElColorPicker,ElSlider,ElScrollbar } from 'element-plus'
 import 'element-plus/dist/index.css'
 import { Camera, Edit } from '@element-plus/icons-vue'
 const imgUrl = ref('')
@@ -186,6 +186,11 @@ const drawImage = (image) => {
     scaledWidth,
     scaledHeight
   )
+  
+  // 如果有水印文本，重新绘制水印
+  if (watermarkText.value) {
+    updateWatermark()
+  }
 }
 
 // 更新裁剪框位置
@@ -325,7 +330,7 @@ const handleMouseMove = (e) => {
     area.y = Math.max(0, Math.min(canvas.height - area.height, area.y + movementY))
   }
 
-  // 重新绘制
+  // 重绘制
   if (area.isResizing || area.isDragging) {
     drawImage(originalImage.value)
     drawCropArea()
@@ -422,7 +427,7 @@ const handleResizeMouseDown = (e, position) => {
           newWidth = startWidth - (newX - startLeft)
         }
         if (startTop + startHeight + deltaY <= canvas.height) {
-          // 只��理下边界
+          // 只理下边界
           newHeight = Math.max(minSize, startHeight + deltaY)
         }
         break
@@ -834,13 +839,63 @@ const undoDrawing = () => {
   }
 }
 
+// 添加水印相关状态
+const watermarkText = ref('')
+const watermarkSize = ref(24)
+const watermarkColor = ref('#000000')
+const watermarkOpacity = ref(50)
+
+// 修改更新水印方法
+const updateWatermark = () => {
+  if (!canvasRef.value || !originalImage.value) return
+  
+  const ctx = canvasRef.value.getContext('2d')
+  
+  // 先清空画布
+  ctx.clearRect(0, 0, canvasRef.value.width, canvasRef.value.height)
+  
+  // 重新绘制原图
+  const canvas = canvasRef.value
+  const scale = Math.min(
+    canvas.width / originalImage.value.width,
+    canvas.height / originalImage.value.height
+  )
+  
+  const scaledWidth = originalImage.value.width * scale
+  const scaledHeight = originalImage.value.height * scale
+  const x = (canvas.width - scaledWidth) / 2
+  const y = (canvas.height - scaledHeight) / 2
+  
+  ctx.drawImage(
+    originalImage.value,
+    x, y,
+    scaledWidth,
+    scaledHeight
+  )
+  
+  // 如果有水印文本，添加水印
+  if (watermarkText.value) {
+    // 设置水印样式
+    ctx.font = `${watermarkSize.value}px Arial`
+    ctx.fillStyle = `${watermarkColor.value}${Math.round(watermarkOpacity.value * 2.55).toString(16).padStart(2, '0')}`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    
+    // 在画布中心绘制水印
+    const centerX = canvasRef.value.width / 2
+    const centerY = canvasRef.value.height / 2
+    ctx.fillText(watermarkText.value, centerX, centerY)
+  }
+}
+
 </script>
 
 <template>
   <div class="container">
     <!-- 左侧配置面板 -->
     <div class="tools-panel">
-      <!-- 尺寸调整输入框 -->
+      <el-scrollbar :always="true">
+        <!-- 尺寸调整输入框 -->
       <div class="size-panel">
         <div class="panel-title">尺寸调整</div>
         <div class="size-inputs">
@@ -964,6 +1019,70 @@ const undoDrawing = () => {
           </div>
         </div>
       </div>
+       <!-- 在位置控制面板后添加水印配置面板 -->
+       <div class="size-panel">
+        <div class="panel-title">水印设置</div>
+        <div class="size-inputs">
+          <!-- 水印文本输入 -->
+          <div class="size-input-group">
+            <span class="size-label">文本</span>
+            <el-input
+              v-model="watermarkText"
+              placeholder="请输入水印文字"
+              @change="updateWatermark"
+            />
+          </div>
+          
+          <!-- 水印大小 -->
+          <div class="size-input-group">
+            <span class="size-label">大小</span>
+            <el-input
+              v-model.number="watermarkSize"
+              type="number"
+              :min="12"
+              :max="72"
+              @input="updateWatermark"
+            >
+              <template #append>px</template>
+            </el-input>
+          </div>
+          
+          <!-- 水印颜色 -->
+          <div class="size-input-group color-picker-group">
+            <span class="size-label">颜色</span>
+            <el-color-picker
+              v-model="watermarkColor"
+              :predefine="[
+                '#ff4500',
+                '#ff8c00',
+                '#ffd700',
+                '#90ee90',
+                '#00ced1',
+                '#1e90ff',
+                '#c71585',
+                '#000000',
+                '#ffffff'
+              ]"
+              show-alpha
+              @change="updateWatermark"
+            />
+          </div>
+          
+          <!-- 水印透明度 -->
+          <div class="size-input-group">
+            <span class="size-label">透明度</span>
+            <el-slider
+              v-model="watermarkOpacity"
+              :min="0"
+              :max="100"
+              @input="updateWatermark"
+            />
+          </div>
+        </div>
+      </div>
+      </el-scrollbar>
+
+     
 
       <!-- 操作按钮 -->
       <div class="action-buttons">
@@ -1725,7 +1844,7 @@ const undoDrawing = () => {
   cursor: crosshair;
 }
 
-/* ���剪框样式 */
+/* 剪框样式 */
 .crop-box {
   position: absolute;
   border: 2px solid #fff;
@@ -1808,7 +1927,7 @@ const undoDrawing = () => {
   cursor: w-resize;
 }
 
-/* 添加尺��输入框样式 */
+/* 添加尺寸输入框样式 */
 .size-inputs {
   display: flex;
   flex-direction: column;
@@ -1955,5 +2074,41 @@ const undoDrawing = () => {
 .tool-item.active {
   background: #e3f2fd;
   border: 2px solid #1976d2;
+}
+
+/* 修改颜色选择器样式 */
+.color-picker-group {
+  position: relative;
+}
+
+.color-picker-group :deep(.el-color-picker) {
+  width: 100%;
+  height: 32px;
+}
+
+.color-picker-group :deep(.el-color-picker__trigger) {
+  width: 100%;
+  height: 32px;
+  padding: 2px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+}
+
+.color-picker-group :deep(.el-color-picker__color) {
+  border: none;
+}
+
+.color-picker-group :deep(.el-color-picker__empty) {
+  display: none;
+}
+
+/* 调整颜色面板位置 */
+.color-picker-group :deep(.el-color-picker__panel) {
+  left: 0 !important;
+}
+
+/* 确保颜色选择器下拉面板在其他元素之上 */
+:deep(.el-color-picker__panel) {
+  z-index: 3000;
 }
 </style>
