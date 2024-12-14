@@ -48,15 +48,36 @@ const initCanvas = (image) => {
   canvas.height = container.offsetHeight
   
   // 绘制图片
-  drawImage(image)
+  const ctx = canvas.getContext('2d')
   
-  // 初始化裁剪框位置
-  const aspectRatio = 16/9
+  // 计算图片缩放和位置
+  const scale = Math.min(
+    canvas.width / image.width,
+    canvas.height / image.height
+  )
+  
+  const scaledWidth = image.width * scale
+  const scaledHeight = image.height * scale
+  const x = (canvas.width - scaledWidth) / 2
+  const y = (canvas.height - scaledHeight) / 2
+  
+  // 绘制图片
+  ctx.drawImage(
+    image,
+    x, y,
+    scaledWidth,
+    scaledHeight
+  )
+  
+  // 初始化裁剪框位置 - 居中显示
+  const cropWidth = Math.min(scaledWidth * 0.8, canvas.width * 0.8) // 取图片宽度和画布宽度的80%中较小的值
+  const cropHeight = cropWidth * 9 / 16 // 默认16:9比例
+  
   cropArea.value = {
-    x: canvas.width * 0.1,
-    y: canvas.height * 0.1,
-    width: canvas.width * 0.8,
-    height: (canvas.width * 0.8) / aspectRatio,
+    x: (canvas.width - cropWidth) / 2,
+    y: (canvas.height - cropHeight) / 2,
+    width: cropWidth,
+    height: cropHeight,
     isDragging: false,
     isResizing: false
   }
@@ -1021,7 +1042,7 @@ const handleSizeChange = (type, value) => {
   width: 100%;
 }
 
-/* 操作按钮样式优化 */
+/* 操作按钮样式优��� */
 :deep(.action-buttons .el-button) {
   flex: 1;
   justify-content: center;
