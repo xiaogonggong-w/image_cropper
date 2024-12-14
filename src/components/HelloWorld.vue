@@ -255,6 +255,102 @@ const confirmCrop = () => {
   link.href = canvas.toDataURL()
   link.click()
 }
+
+// 处理控制点拖动
+const handleResizeMouseDown = (e, position) => {
+  e.preventDefault()
+  e.stopPropagation()
+  
+  cropArea.value.isResizing = true
+  const startX = e.clientX
+  const startY = e.clientY
+  const startWidth = cropArea.value.width
+  const startHeight = cropArea.value.height
+  const startLeft = cropArea.value.x
+  const startTop = cropArea.value.y
+
+  const handleMouseMove = (e) => {
+    if (!cropArea.value.isResizing) return
+
+    const deltaX = e.clientX - startX
+    const deltaY = e.clientY - startY
+    const minSize = 50
+    const canvas = canvasRef.value
+
+    // 临时变量存储新的位置和尺寸
+    let newX = cropArea.value.x
+    let newY = cropArea.value.y
+    let newWidth = cropArea.value.width
+    let newHeight = cropArea.value.height
+
+    switch (position) {
+      case 'top-left':
+        if (deltaX < startWidth - minSize) {
+          // 只处理左边界
+          newX = Math.max(0, startLeft + deltaX)
+          newWidth = startWidth - (newX - startLeft)
+        }
+        if (deltaY < startHeight - minSize) {
+          // 只处理上边界
+          newY = Math.max(0, startTop + deltaY)
+          newHeight = startHeight - (newY - startTop)
+        }
+        break
+
+      case 'top-right':
+        if (startLeft + startWidth + deltaX <= canvas.width) {
+          // 只处理右边界
+          newWidth = Math.max(minSize, startWidth + deltaX)
+        }
+        if (deltaY < startHeight - minSize) {
+          // 只处理上边界
+          newY = Math.max(0, startTop + deltaY)
+          newHeight = startHeight - (newY - startTop)
+        }
+        break
+
+      case 'bottom-left':
+        if (deltaX < startWidth - minSize) {
+          // 只处理左边界
+          newX = Math.max(0, startLeft + deltaX)
+          newWidth = startWidth - (newX - startLeft)
+        }
+        if (startTop + startHeight + deltaY <= canvas.height) {
+          // 只处理下边界
+          newHeight = Math.max(minSize, startHeight + deltaY)
+        }
+        break
+
+      case 'bottom-right':
+        if (startLeft + startWidth + deltaX <= canvas.width) {
+          // 只处理右边界
+          newWidth = Math.max(minSize, startWidth + deltaX)
+        }
+        if (startTop + startHeight + deltaY <= canvas.height) {
+          // 只处理下边界
+          newHeight = Math.max(minSize, startHeight + deltaY)
+        }
+        break
+    }
+
+    // 更新裁剪框的位置和尺寸
+    cropArea.value.x = newX
+    cropArea.value.y = newY
+    cropArea.value.width = newWidth
+    cropArea.value.height = newHeight
+    
+    updateCropBoxPosition()
+  }
+
+  const handleMouseUp = () => {
+    cropArea.value.isResizing = false
+    document.removeEventListener('mousemove', handleMouseMove)
+    document.removeEventListener('mouseup', handleMouseUp)
+  }
+
+  document.addEventListener('mousemove', handleMouseMove)
+  document.addEventListener('mouseup', handleMouseUp)
+}
 </script>
 
 <template>
@@ -348,10 +444,22 @@ const confirmCrop = () => {
             @mousedown="handleCropBoxMouseDown"
           >
             <!-- 调整大小的控制点 -->
-            <div class="resize-handle top-left"></div>
-            <div class="resize-handle top-right"></div>
-            <div class="resize-handle bottom-left"></div>
-            <div class="resize-handle bottom-right"></div>
+            <div 
+              class="resize-handle top-left"
+              @mousedown="(e) => handleResizeMouseDown(e, 'top-left')"
+            ></div>
+            <div 
+              class="resize-handle top-right"
+              @mousedown="(e) => handleResizeMouseDown(e, 'top-right')"
+            ></div>
+            <div 
+              class="resize-handle bottom-left"
+              @mousedown="(e) => handleResizeMouseDown(e, 'bottom-left')"
+            ></div>
+            <div 
+              class="resize-handle bottom-right"
+              @mousedown="(e) => handleResizeMouseDown(e, 'bottom-right')"
+            ></div>
           </div>
         </template>
       </div>
@@ -996,10 +1104,17 @@ const confirmCrop = () => {
 /* 调整大小的控制点 */
 .resize-handle {
   position: absolute;
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   background: #fff;
   border: 1px solid #4CAF50;
+  border-radius: 50%;
+  z-index: 1;
+}
+
+.resize-handle:hover {
+  background: #4CAF50;
+  border-color: #fff;
 }
 
 .resize-handle.top-left {
