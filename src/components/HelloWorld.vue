@@ -1,13 +1,10 @@
 <script setup>
-import { ref, onMounted, nextTick, computed, onUnmounted } from 'vue'
-import { ElCollapse, ElCollapseItem, ElButton, ElInput,ElTooltip,ElColorPicker,ElSlider,ElScrollbar,ElRadioGroup, ElRadio } from 'element-plus'
+import { ref, onMounted, nextTick, computed, onUnmounted, reactive } from 'vue'
+import { ElCollapse, ElCollapseItem, ElButton, ElInput, ElTooltip, ElColorPicker, ElSlider, ElScrollbar, ElRadioGroup, ElRadio } from 'element-plus'
 import 'element-plus/dist/index.css'
 import { Camera, Edit, ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
-const imgUrl = ref('')
 const canvasRef = ref(null)
 const cropBoxRef = ref(null)
-const activeNames = ref([])
-const ctx = ref(null)
 const originalImage = ref(null)
 const cropArea = ref({
   x: 0,
@@ -17,6 +14,26 @@ const cropArea = ref({
   isDragging: false,
   isResizing: false
 })
+// 添加画笔相关状态
+const brushColor = ref('#FF0000') // 默认色
+const brushSize = ref(5) // 默认大小
+const brushHistory = ref([]) // 用于保存绘制历史
+// 尺寸、旋转、缩放、位置
+const config = reactive({
+  rotateAngle: 0,
+  scale: 100,
+  watermark: {
+    text: '',
+    size: 24,
+    color: '#000000',
+    opacity: 50,
+    mode: 'single',
+    position: {
+      x: 0,
+      y: 0
+    }
+  }
+})
 
 // 撤销恢复的历史状态
 const redoHistory = ref([])
@@ -24,64 +41,356 @@ const redoHistory = ref([])
 // 添加 editor-container 的引用
 const containerRef = ref(null)
 
-// 移除配置组定义，直接使用尺寸输入
-const sizeInputs = computed(() => ({
-  width: cropArea.value?.width?.toFixed(0) || '',
-  height: cropArea.value?.height?.toFixed(0) || ''
-}))
+function handleCanvasDraw() {
+  if (!canvasRef.value) return
 
-// 添加旋转角度状态
-const rotateAngle = ref(0)
+  // 获取画布上下文
+  const ctx = canvasRef.value.getContext('2d')
+  const canvas = canvasRef.value
+
+
+
+  // 清空画布
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  // 保存当前状态
+  ctx.save()
+
+
+  // 旋转
+  // 移动到画布中心
+  ctx.translate(canvas.width / 2, canvas.height / 2)
+  // 旋转
+  ctx.rotate((config.rotateAngle * Math.PI) / 180)
+
+  // 缩放
+  // 计算基础缩放比例
+  const baseScale = Math.min(
+    canvas.width / originalImage.value.width,
+    canvas.height / originalImage.value.height
+  )
+
+  // 应用额外的缩放
+  const finalScale = baseScale * (config.scale / 100)
+
+  // 绘制图片
+  ctx.drawImage(
+    originalImage.value,
+    -originalImage.value.width * finalScale / 2,
+      -originalImage.value.height * finalScale / 2,
+    originalImage.value.width * finalScale,
+    originalImage.value.height * finalScale
+  )
+
+
+
+  // 恢复状态
+  ctx.restore()
+  drawWatermark()
+
+}
 
 // 添加旋转处理方法
 const handleRotate = (value) => {
   if (!cropArea.value || !canvasRef.value) return
-  
+
   // 如果是点击按钮传入的值，直接加到当前角度上
   if (typeof value === 'number') {
-    rotateAngle.value = ((rotateAngle.value + value) % 360 + 360) % 360
+    config.rotateAngle = ((config.rotateAngle + value) % 360 + 360) % 360
   } else {
     // 如果是输入框输入的值，直接设置角度
     const angle = parseInt(value)
     if (isNaN(angle)) return
-    rotateAngle.value = ((angle % 360) + 360) % 360
+    config.rotateAngle = ((angle % 360) + 360) % 360
   }
-  
-  // 获取画布上下文
+
+  handleCanvasDraw()
+}
+// 添加缩放处理方法
+const handleScale = (value) => {
+  if (!canvasRef.value || !originalImage.value) return
+
+  let newScale
+  if (typeof value === 'number') {
+    // 按钮点，增加或减少缩放
+    newScale = Math.min(200, Math.max(10, config.scale + value))
+  } else {
+    // 输入框输入
+    newScale = Math.min(200, Math.max(10, parseInt(value) || 100))
+  }
+
+  config.scale = newScale
+
+  handleCanvasDraw()
+}
+
+
+
+
+
+// 添加预定义颜色
+const predefineColors = [
+  '#ff4500',
+  '#ff8c00',
+  '#ffd700',
+  '#90ee90',
+  '#00ced1',
+  '#1e90ff',
+  '#c71585',
+  '#000000',
+  '#ffffff'
+]
+
+// 修改水印颜色处理方法
+const handleWatermarkColorChange = (color) => {
+  config.watermark.color = color
+  updateWatermark()
+}
+
+
+// 修改水印位置处理方法
+const handleWatermarkPosition = (position) => {
+  if (!cropArea.value) return
+
+  const area = cropArea.value
+  const padding = config.watermark.size // 使用文字大小作为边距
+
+  switch (position) {
+    case 'left-top':
+      config.watermark.position = {
+        x: area.x + padding,
+        y: area.y + padding
+      }
+      break
+    case 'center-top':
+      config.watermark.position = {
+        x: area.x + area.width / 2,
+        y: area.y + padding
+      }
+      break
+    case 'right-top':
+      config.watermark.position = {
+        x: area.x + area.width - padding,
+        y: area.y + padding
+      }
+      break
+    case 'center':
+      config.watermark.position = {
+        x: area.x + area.width / 2,
+        y: area.y + area.height / 2
+      }
+      break
+    case 'left-bottom':
+      config.watermark.position = {
+        x: area.x + padding,
+        y: area.y + area.height - padding
+      }
+      break
+    case 'center-bottom':
+      config.watermark.position = {
+        x: area.x + area.width / 2,
+        y: area.y + area.height - padding
+      }
+      break
+    case 'right-bottom':
+      config.watermark.position = {
+        x: area.x + area.width - padding,
+        y: area.y + area.height - padding
+      }
+      break
+  }
+
+  updateWatermark()
+}
+
+// 添加水印默认位置初始化
+const initWatermarkPosition = () => {
+  if (!cropArea.value) return
+
+  // 设置水印位置为裁剪框中心
+  config.watermark.position = {
+    x: cropArea.value.x + cropArea.value.width / 2,
+    y: cropArea.value.y + cropArea.value.height / 2
+  }
+}
+
+
+// 分离水印绘制为独立方法
+const drawWatermark = () => {
+  if (!canvasRef.value || !config.watermark.text || !cropArea.value) return
+
   const ctx = canvasRef.value.getContext('2d')
-  const canvas = canvasRef.value
-  
-  // 清空画布
-  ctx.clearRect(0, 0, canvas.width, canvas.height)
-  
+  const area = cropArea.value
+
   // 保存当前状态
   ctx.save()
-  
-  // 移动到画布中心
-  ctx.translate(canvas.width / 2, canvas.height / 2)
-  
-  // 旋转
-  ctx.rotate((rotateAngle.value * Math.PI) / 180)
-  
-  // 绘制图片
-  if (originalImage.value) {
-    const scale = Math.min(
-      canvas.width / originalImage.value.width,
-      canvas.height / originalImage.value.height
-    )
-    
-    ctx.drawImage(
-      originalImage.value,
-      -originalImage.value.width * scale / 2,
-      -originalImage.value.height * scale / 2,
-      originalImage.value.width * scale,
-      originalImage.value.height * scale
-    )
+
+  // 设置裁剪区域为裁剪框大小
+  ctx.beginPath()
+  ctx.rect(area.x, area.y, area.width, area.height)
+  ctx.clip()
+
+  // 设置水印样式
+  ctx.font = `${config.watermark.size}px Arial`
+
+  // 处理颜色和透明度
+  const opacity = config.watermark.opacity / 100
+  if (config.watermark.color.startsWith('#')) {
+    const r = parseInt(config.watermark.color.slice(1, 3), 16)
+    const g = parseInt(config.watermark.color.slice(3, 5), 16)
+    const b = parseInt(config.watermark.color.slice(5, 7), 16)
+    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${opacity})`
+  } else {
+    ctx.fillStyle = config.watermark.color.replace(/[\d.]+\)$/, `${opacity})`)
   }
-  
+
+  if (config.watermark.mode === 'single') {
+    // 单个水印
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(
+      config.watermark.text,
+      config.watermark.position.x,
+      config.watermark.position.y
+    )
+  } else {
+    // 满屏水印
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'top'
+
+    const textWidth = ctx.measureText(config.watermark.text).width
+    const gap = textWidth + 50
+
+    // 设置旋转中心点为裁剪框中心
+    const centerX = area.x + area.width / 2
+    const centerY = area.y + area.height / 2
+
+    ctx.translate(centerX, centerY)
+    ctx.rotate(-30 * Math.PI / 180)
+    ctx.translate(-centerX, -centerY)
+
+    // 计算需要绘制的范围
+    const startX = area.x - gap
+    const startY = area.y - gap
+    const endX = area.x + area.width + gap
+    const endY = area.y + area.height + gap
+
+    // 绘制水印网格
+    for (let y = startY; y < endY; y += gap) {
+      for (let x = startX; x < endX; x += gap) {
+        ctx.fillText(config.watermark.text, x, y)
+      }
+    }
+  }
+
   // 恢复状态
   ctx.restore()
 }
+
+// 修改更新水印方法
+const updateWatermark = () => {
+  // 重绘图片和水印
+  if (originalImage.value) {
+    handleCanvasDraw()
+  }
+}
+
+
+
+// 修改尺寸修改处方法
+const handleSizeChange = (type, value) => {
+  if (!cropArea.value || !canvasRef.value) return
+
+  const canvas = canvasRef.value
+  const newValue = Math.round(parseInt(value)) // 确保是整数
+
+  if (isNaN(newValue)) return
+
+  if (type === 'width') {
+    // 只限制最大宽度
+    const maxWidth = canvas.width - Math.round(cropArea.value.x)
+    cropArea.value.width = Math.round(Math.min(newValue, maxWidth))
+
+    // 如果超出画布，调整位置
+    if (cropArea.value.x + newValue > canvas.width) {
+      cropArea.value.x = Math.round(canvas.width - newValue)
+    }
+  } else if (type === 'height') {
+    // 只限制最大高度
+    const maxHeight = canvas.height - Math.round(cropArea.value.y)
+    cropArea.value.height = Math.round(Math.min(newValue, maxHeight))
+
+    // 如果超出画布，调整位置
+    if (cropArea.value.y + newValue > canvas.height) {
+      cropArea.value.y = Math.round(canvas.height - newValue)
+    }
+  }
+
+  updateCropBoxPosition()
+
+}
+
+
+
+// 修改位置控制方法
+const handlePositionChange = (axis, value) => {
+  if (!cropArea.value || !canvasRef.value) return
+
+  const newValue = Math.round(parseInt(value))
+  if (isNaN(newValue)) return
+
+  const img = imagePosition.value
+
+  // 直接使用相对坐标，不需要虑负值
+  if (axis === 'x') {
+    cropArea.value.x = img.x + Math.min(newValue, img.width - cropArea.value.width)
+  } else {
+    cropArea.value.y = img.y + Math.min(newValue, img.height - cropArea.value.height)
+  }
+
+  updateCropBoxPosition()
+}
+
+// 修改快捷位置处理方法
+const handleQuickPosition = (position) => {
+  if (!cropArea.value || !canvasRef.value) return
+
+  const img = imagePosition.value
+  const area = cropArea.value
+
+  switch (position) {
+    case 'left-top':
+      area.x = img.x
+      area.y = img.y
+      break
+    case 'center-top':
+      area.x = img.x + (img.width - area.width) / 2
+      area.y = img.y
+      break
+    case 'right-top':
+      area.x = img.x + img.width - area.width
+      area.y = img.y
+      break
+    case 'center':
+      area.x = img.x + (img.width - area.width) / 2
+      area.y = img.y + (img.height - area.height) / 2
+      break
+    case 'left-bottom':
+      area.x = img.x
+      area.y = img.y + img.height - area.height
+      break
+    case 'center-bottom':
+      area.x = img.x + (img.width - area.width) / 2
+      area.y = img.y + img.height - area.height
+      break
+    case 'right-bottom':
+      area.x = img.x + img.width - area.width
+      area.y = img.y + img.height - area.height
+      break
+  }
+
+  updateCropBoxPosition()
+}
+
 
 // 监听 canvas 挂载
 onMounted(() => {
@@ -95,28 +404,28 @@ onMounted(() => {
 // 修改初始化画布方法
 const initCanvas = (image) => {
   if (!canvasRef.value || !containerRef.value) return
-  
+
   const canvas = canvasRef.value
   const container = containerRef.value
-  
+
   // 设置画布大小
   canvas.width = container.offsetWidth
   canvas.height = container.offsetHeight
-  
+
   // 绘制图片
   const ctx = canvas.getContext('2d')
-  
+
   // 计算图片缩放和位置
   const scale = Math.min(
     canvas.width / image.width,
     canvas.height / image.height
   )
-  
+
   const scaledWidth = image.width * scale
   const scaledHeight = image.height * scale
   const x = (canvas.width - scaledWidth) / 2
   const y = (canvas.height - scaledHeight) / 2
-  
+
   // 记录图片位置
   imagePosition.value = {
     x,
@@ -125,7 +434,7 @@ const initCanvas = (image) => {
     height: scaledHeight,
     scale
   }
-  
+
   // 绘制图片
   ctx.drawImage(
     image,
@@ -133,11 +442,11 @@ const initCanvas = (image) => {
     scaledWidth,
     scaledHeight
   )
-  
+
   // 初始化裁剪框位置 - 居中显示，基于图片位置
   const cropWidth = Math.min(scaledWidth * 0.8, canvas.width * 0.8)
   const cropHeight = cropWidth * 9 / 16
-  
+
   cropArea.value = {
     x: x + (scaledWidth - cropWidth) / 2,  // 基于图片位置居中
     y: y + (scaledHeight - cropHeight) / 2, // 基于图片位置居中
@@ -146,10 +455,10 @@ const initCanvas = (image) => {
     isDragging: false,
     isResizing: false
   }
-  
+
   // 更新裁剪框位置
   updateCropBoxPosition()
-  
+
   // 初始化水印位置
   initWatermarkPosition()
 }
@@ -157,133 +466,12 @@ const initCanvas = (image) => {
 // 添加图片位置状态
 const imagePosition = ref({ x: 0, y: 0, width: 0, height: 0 })
 
-// 修改 drawImage 方法
-const drawImage = (image, skipWatermark = false) => {
-  const canvas = canvasRef.value
-  const ctx = canvas.getContext('2d')
-  
-  // 清空画布
-  ctx.clearRect(0, 0, canvas.width, canvas.height)
-  
-  // 计算图片缩放和位置
-  const scale = Math.min(
-    canvas.width / image.width,
-    canvas.height / image.height
-  )
-  
-  const scaledWidth = image.width * scale
-  const scaledHeight = image.height * scale
-  const x = (canvas.width - scaledWidth) / 2
-  const y = (canvas.height - scaledHeight) / 2
-  
-  // 记录图片位置
-  imagePosition.value = {
-    x,
-    y,
-    width: scaledWidth,
-    height: scaledHeight,
-    scale
-  }
-  
-  // 绘制图片
-  ctx.drawImage(
-    image,
-    x, y,
-    scaledWidth,
-    scaledHeight
-  )
-  
-  // 如果有水印且不是跳过水印的调用，则绘制水印
-  if (watermarkText.value && !skipWatermark) {
-    drawWatermark()
-  }
-}
 
-// 分离水印绘制为独立方法
-const drawWatermark = () => {
-  if (!canvasRef.value || !watermarkText.value || !cropArea.value) return
-  
-  const ctx = canvasRef.value.getContext('2d')
-  const area = cropArea.value
-  
-  // 保存当前状态
-  ctx.save()
-  
-  // 设置裁剪区域为裁剪框大小
-  ctx.beginPath()
-  ctx.rect(area.x, area.y, area.width, area.height)
-  ctx.clip()
-  
-  // 设置水印样式
-  ctx.font = `${watermarkSize.value}px Arial`
-  
-  // 处理颜色和透明度
-  const opacity = watermarkOpacity.value / 100
-  if (watermarkColor.value.startsWith('#')) {
-    const r = parseInt(watermarkColor.value.slice(1, 3), 16)
-    const g = parseInt(watermarkColor.value.slice(3, 5), 16)
-    const b = parseInt(watermarkColor.value.slice(5, 7), 16)
-    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${opacity})`
-  } else {
-    ctx.fillStyle = watermarkColor.value.replace(/[\d.]+\)$/, `${opacity})`)
-  }
-  
-  if (watermarkMode.value === 'single') {
-    // 单个水印
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillText(
-      watermarkText.value,
-      watermarkPosition.value.x,
-      watermarkPosition.value.y
-    )
-  } else {
-    // 满屏水印
-    ctx.textAlign = 'left'
-    ctx.textBaseline = 'top'
-    
-    const textWidth = ctx.measureText(watermarkText.value).width
-    const gap = textWidth + 50
-    
-    // 设置旋转中心点为裁剪框中心
-    const centerX = area.x + area.width / 2
-    const centerY = area.y + area.height / 2
-    
-    ctx.translate(centerX, centerY)
-    ctx.rotate(-30 * Math.PI / 180)
-    ctx.translate(-centerX, -centerY)
-    
-    // 计算需要绘制的范围
-    const startX = area.x - gap
-    const startY = area.y - gap
-    const endX = area.x + area.width + gap
-    const endY = area.y + area.height + gap
-    
-    // 绘制水印网格
-    for (let y = startY; y < endY; y += gap) {
-      for (let x = startX; x < endX; x += gap) {
-        ctx.fillText(watermarkText.value, x, y)
-      }
-    }
-  }
-  
-  // 恢复状态
-  ctx.restore()
-}
-
-// 修改更新水印方法
-const updateWatermark = () => {
-  // 重绘图片和水印
-  if (originalImage.value) {
-    drawImage(originalImage.value, true)
-    drawWatermark()
-  }
-}
 
 // 更新裁剪框位置
 const updateCropBoxPosition = () => {
   if (!cropBoxRef.value) return
-  
+
   const area = cropArea.value
   // 确保所有值都是整数
   cropBoxRef.value.style.left = `${Math.round(area.x)}px`
@@ -295,33 +483,33 @@ const updateCropBoxPosition = () => {
 // 修改裁剪框拖动处理
 const handleCropBoxMouseDown = (e) => {
   if (['mosaic', 'brush'].includes(currentTool.value)) return // 马赛克和画笔模式下都禁止拖动裁剪框
-  
+
   e.preventDefault()
   cropArea.value.isDragging = true
-  
+
   const startX = e.clientX - cropArea.value.x
   const startY = e.clientY - cropArea.value.y
-  
+
   const handleMouseMove = (e) => {
     if (!cropArea.value.isDragging) return
-    
+
     const newX = e.clientX - startX
     const newY = e.clientY - startY
     const canvas = canvasRef.value
-    
+
     // 制在画布范围内
     cropArea.value.x = Math.min(canvas.width - cropArea.value.width, Math.max(0, newX))
     cropArea.value.y = Math.min(canvas.height - cropArea.value.height, Math.max(0, newY))
-    
+
     updateCropBoxPosition()
   }
-  
+
   const handleMouseUp = () => {
     cropArea.value.isDragging = false
     document.removeEventListener('mousemove', handleMouseMove)
     document.removeEventListener('mouseup', handleMouseUp)
   }
-  
+
   document.addEventListener('mousemove', handleMouseMove)
   document.addEventListener('mouseup', handleMouseUp)
 }
@@ -345,109 +533,23 @@ const handleFileChange = (e) => {
   }
 }
 
-// 修改 handleMouseDown 方法以支持调整大小
-const handleMouseDown = (e) => {
-  const { offsetX, offsetY } = e
-  const area = cropArea.value
-  const handleSize = 8
-
-  // 检查是否点击在制点上
-  const handles = [
-    { x: area.x, y: area.y, cursor: 'nw-resize' },
-    { x: area.x + area.width / 2, y: area.y, cursor: 'n-resize' },
-    { x: area.x + area.width, y: area.y, cursor: 'ne-resize' },
-    { x: area.x + area.width, y: area.y + area.height / 2, cursor: 'e-resize' },
-    { x: area.x + area.width, y: area.y + area.height, cursor: 'se-resize' },
-    { x: area.x + area.width / 2, y: area.y + area.height, cursor: 's-resize' },
-    { x: area.x, y: area.y + area.height, cursor: 'sw-resize' },
-    { x: area.x, y: area.y + area.height / 2, cursor: 'w-resize' }
-  ]
-
-  for (let i = 0; i < handles.length; i++) {
-    const handle = handles[i]
-    if (
-      offsetX >= handle.x - handleSize / 2 &&
-      offsetX <= handle.x + handleSize / 2 &&
-      offsetY >= handle.y - handleSize / 2 &&
-      offsetY <= handle.y + handleSize / 2
-    ) {
-      area.isResizing = true
-      area.resizeHandle = i
-      canvasRef.value.style.cursor = handle.cursor
-      return
-    }
-  }
-
-  // 如果不是点击在制点上，检查是否点击在裁剪框上
-  if (
-    offsetX >= area.x &&
-    offsetX <= area.x + area.width &&
-    offsetY >= area.y &&
-    offsetY <= area.y + area.height
-  ) {
-    area.isDragging = true
-    canvasRef.value.style.cursor = 'move'
-  }
-}
-
-// 修改 handleMouseMove 方法以支持调整大小
-const handleMouseMove = (e) => {
-  const { movementX, movementY } = e
-  const area = cropArea.value
-  const canvas = canvasRef.value
-
-  if (area.isResizing) {
-    // 根据不同的控制点调整大小
-    switch (area.resizeHandle) {
-      case 0: // 左上
-        area.x = Math.min(area.x + movementX, area.x + area.width)
-        area.y = Math.min(area.y + movementY, area.y + area.height)
-        area.width -= movementX
-        area.height -= movementY
-        break
-      case 4: // 右下
-        area.width = Math.max(10, area.width + movementX)
-        area.height = Math.max(10, area.height + movementY)
-        break
-      // ... 可以添加其他控制点的处理
-    }
-  } else if (area.isDragging) {
-    // 移动裁剪框
-    area.x = Math.max(0, Math.min(canvas.width - area.width, area.x + movementX))
-    area.y = Math.max(0, Math.min(canvas.height - area.height, area.y + movementY))
-  }
-
-  // 重制
-  if (area.isResizing || area.isDragging) {
-    drawImage(originalImage.value)
-    drawCropArea()
-  }
-}
-
-// 修改 handleMouseUp 方法
-const handleMouseUp = () => {
-  cropArea.value.isDragging = false
-  cropArea.value.isResizing = false
-  canvasRef.value.style.cursor = 'crosshair'
-}
-
-// 确认���剪
+// 确认裁剪
 const confirmCrop = () => {
   const canvas = document.createElement('canvas')
   const ctx = canvas.getContext('2d')
   const area = cropArea.value
-  
+
   // 设置输出画布大小
   canvas.width = area.width
   canvas.height = area.height
-  
+
   // 裁剪并绘制
   ctx.drawImage(
     canvasRef.value,
     area.x, area.y, area.width, area.height,
     0, 0, area.width, area.height
   )
-  
+
   // 下载裁剪后的图片
   const link = document.createElement('a')
   link.download = `cropped_${Date.now()}.png`
@@ -459,7 +561,7 @@ const confirmCrop = () => {
 const handleResizeMouseDown = (e, position) => {
   e.preventDefault()
   e.stopPropagation()
-  
+
   cropArea.value.isResizing = true
   const startX = e.clientX
   const startY = e.clientY
@@ -536,19 +638,19 @@ const handleResizeMouseDown = (e, position) => {
           newHeight = startHeight - (newY - startTop)
         }
         break
-        
+
       case 'right':
         if (startLeft + startWidth + deltaX <= canvas.width) {
           newWidth = Math.max(minSize, startWidth + deltaX)
         }
         break
-        
+
       case 'bottom':
         if (startTop + startHeight + deltaY <= canvas.height) {
           newHeight = Math.max(minSize, startHeight + deltaY)
         }
         break
-        
+
       case 'left':
         if (deltaX < startWidth - minSize) {
           newX = Math.max(0, startLeft + deltaX)
@@ -561,7 +663,7 @@ const handleResizeMouseDown = (e, position) => {
     cropArea.value.y = newY
     cropArea.value.width = newWidth
     cropArea.value.height = newHeight
-    
+
     updateCropBoxPosition()
   }
 
@@ -575,149 +677,6 @@ const handleResizeMouseDown = (e, position) => {
   document.addEventListener('mouseup', handleMouseUp)
 }
 
-// 修改尺寸修改处方法
-const handleSizeChange = (type, value) => {
-  if (!cropArea.value || !canvasRef.value) return
-  
-  const canvas = canvasRef.value
-  const newValue = Math.round(parseInt(value)) // 确保是整数
-  
-  if (isNaN(newValue)) return
-  
-  if (type === 'width') {
-    // 只限制最大宽度
-    const maxWidth = canvas.width - Math.round(cropArea.value.x)
-    cropArea.value.width = Math.round(Math.min(newValue, maxWidth))
-    
-    // 如果超出画布，调整位置
-    if (cropArea.value.x + newValue > canvas.width) {
-      cropArea.value.x = Math.round(canvas.width - newValue)
-    }
-  } else if (type === 'height') {
-    // 只限制最大高度
-    const maxHeight = canvas.height - Math.round(cropArea.value.y)
-    cropArea.value.height = Math.round(Math.min(newValue, maxHeight))
-    
-    // 如果超出画布，调整位置
-    if (cropArea.value.y + newValue > canvas.height) {
-      cropArea.value.y = Math.round(canvas.height - newValue)
-    }
-  }
-  
-  updateCropBoxPosition()
-  
-  if (originalImage.value) {
-    drawImage(originalImage.value)
-  }
-}
-
-// 添加缩放状态
-const scale = ref(100) // 初始缩放比例为100%
-
-// 添加缩放处理方法
-const handleScale = (value) => {
-  if (!canvasRef.value || !originalImage.value) return
-  
-  let newScale
-  if (typeof value === 'number') {
-    // 按钮点，增加或减少缩放
-    newScale = Math.min(200, Math.max(10, scale.value + value))
-  } else {
-    // 输入框输入
-    newScale = Math.min(200, Math.max(10, parseInt(value) || 100))
-  }
-  
-  scale.value = newScale
-  
-  // 获取画布上下文
-  const ctx = canvasRef.value.getContext('2d')
-  const canvas = canvasRef.value
-  
-  // 清空画布
-  ctx.clearRect(0, 0, canvas.width, canvas.height)
-  
-  // 计算基础缩放比例
-  const baseScale = Math.min(
-    canvas.width / originalImage.value.width,
-    canvas.height / originalImage.value.height
-  )
-  
-  // 应用额外的缩放
-  const finalScale = baseScale * (newScale / 100)
-  
-  // 计算居中位置
-  const x = (canvas.width - originalImage.value.width * finalScale) / 2
-  const y = (canvas.height - originalImage.value.height * finalScale) / 2
-  
-  // 绘制图片
-  ctx.drawImage(
-    originalImage.value,
-    x, y,
-    originalImage.value.width * finalScale,
-    originalImage.value.height * finalScale
-  )
-}
-
-// 修改位置控制方法
-const handlePositionChange = (axis, value) => {
-  if (!cropArea.value || !canvasRef.value) return
-  
-  const newValue = Math.round(parseInt(value))
-  if (isNaN(newValue)) return
-  
-  const img = imagePosition.value
-  
-  // 直接使用相对坐标，不需要虑负值
-  if (axis === 'x') {
-    cropArea.value.x = img.x + Math.min(newValue, img.width - cropArea.value.width)
-  } else {
-    cropArea.value.y = img.y + Math.min(newValue, img.height - cropArea.value.height)
-  }
-  
-  updateCropBoxPosition()
-}
-
-// 修改快捷位置处理方法
-const handleQuickPosition = (position) => {
-  if (!cropArea.value || !canvasRef.value) return
-  
-  const img = imagePosition.value
-  const area = cropArea.value
-  
-  switch (position) {
-    case 'left-top':
-      area.x = img.x
-      area.y = img.y
-      break
-    case 'center-top':
-      area.x = img.x + (img.width - area.width) / 2
-      area.y = img.y
-      break
-    case 'right-top':
-      area.x = img.x + img.width - area.width
-      area.y = img.y
-      break
-    case 'center':
-      area.x = img.x + (img.width - area.width) / 2
-      area.y = img.y + (img.height - area.height) / 2
-      break
-    case 'left-bottom':
-      area.x = img.x
-      area.y = img.y + img.height - area.height
-      break
-    case 'center-bottom':
-      area.x = img.x + (img.width - area.width) / 2
-      area.y = img.y + img.height - area.height
-      break
-    case 'right-bottom':
-      area.x = img.x + img.width - area.width
-      area.y = img.y + img.height - area.height
-      break
-  }
-  
-  updateCropBoxPosition()
-}
-
 // 添加工具相关状态
 const currentTool = ref(null)
 const isDrawing = ref(false)
@@ -726,7 +685,7 @@ const lastPos = ref({ x: 0, y: 0 })
 // 修改切换工具方法
 const toggleTool = (tool) => {
   console.log('toggleTool', tool, currentTool.value);
-  
+
   if (currentTool.value === tool) {
     currentTool.value = null
     canvasRef.value.style.cursor = 'default'
@@ -737,7 +696,7 @@ const toggleTool = (tool) => {
       console.log('进来来没')
       canvasRef.value.style.cursor = 'crosshair'
       cropBoxRef.value.style.pointerEvents = 'none'
-      
+
       // 设置画笔样式
       if (tool === 'brush') {
         const ctx = canvasRef.value.getContext('2d')
@@ -770,74 +729,42 @@ const drawMosaic = (x, y) => {
   }
   const ctx = canvasRef.value.getContext('2d')
   const size = 10 // 马赛克块大小
-  
+
   // 获取起点和终点之间的所有点
   const points = getLinePoints(lastPos.value.x, lastPos.value.y, x, y)
-  
+
   points.forEach(point => {
     if (!isPointInCropArea(point.x, point.y)) return
-    
+
     // 对齐到网格
     const gridX = Math.floor(point.x / size) * size
     const gridY = Math.floor(point.y / size) * size
-    
+
     // 获取区域的平��颜色
     const imageData = ctx.getImageData(gridX, gridY, size, size)
     const color = getAverageColor(imageData.data)
-    
+
     // 填充马赛克块
     ctx.fillStyle = `rgb(${color.r}, ${color.g}, ${color.b})`
     ctx.fillRect(gridX, gridY, size, size)
   })
 }
 
-// 修改画笔绘制处理
-const handleCanvasMouseDown = (e) => {
-  if (!currentTool.value || !['mosaic', 'brush'].includes(currentTool.value)) return
-  
-  const rect = canvasRef.value.getBoundingClientRect()
-  const x = e.clientX - rect.left
-  const y = e.clientY - rect.top
-  
-  // 检查起始点是否在裁剪框内
+// 修改画笔绘制方法
+const drawBrush = (x, y) => {
   if (!isPointInCropArea(x, y)) return
-  // 开始绘制前保存状态
-  saveDrawState()
-  isDrawing.value = true
-  lastPos.value = { x, y }
-  
-  // 开始新的路径
-  if (currentTool.value === 'brush') {
-    const ctx = canvasRef.value.getContext('2d')
-    ctx.beginPath()
-    ctx.moveTo(x, y)
-    ctx.lineTo(x, y)
-    ctx.strokeStyle = brushColor.value
-    ctx.lineWidth = brushSize.value
-    ctx.lineCap = 'round'
-    ctx.lineJoin = 'round'
-    ctx.stroke()
-  } else if (currentTool.value === 'mosaic') {
-    drawMosaic(x, y)
+  // 在绘制前保存当前状态
+  if (!lastPos.value.x && !lastPos.value.y) {
+    saveDrawState()
   }
-}
+  const ctx = canvasRef.value.getContext('2d')
 
-const handleCanvasMouseMove = (e) => {
-  if (!isDrawing.value || !currentTool.value) return
-  
-  const rect = canvasRef.value.getBoundingClientRect()
-  const x = e.clientX - rect.left
-  const y = e.clientY - rect.top
-  
-  if (currentTool.value === 'brush') {
-    const ctx = canvasRef.value.getContext('2d')
-    
     // 使用裁剪区域限制绘制范围
     ctx.save()
     ctx.beginPath()
     ctx.rect(cropArea.value.x, cropArea.value.y, cropArea.value.width, cropArea.value.height)
     ctx.clip()
-    
+
     // 绘制线条
     ctx.beginPath()
     ctx.moveTo(lastPos.value.x, lastPos.value.y)
@@ -847,12 +774,44 @@ const handleCanvasMouseMove = (e) => {
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
     ctx.stroke()
-    
+
     ctx.restore()
+}
+const handleCanvasMouseDown = (e) => {
+  if (!currentTool.value || !['mosaic', 'brush'].includes(currentTool.value)) return
+
+  const rect = canvasRef.value.getBoundingClientRect()
+  const x = e.clientX - rect.left
+  const y = e.clientY - rect.top
+
+  // 检查起始点是否在裁剪框内
+  if (!isPointInCropArea(x, y)) return
+  // 开始绘制前保存状态
+  saveDrawState()
+  isDrawing.value = true
+  lastPos.value = { x, y }
+
+  // 开始新的路径
+  if (currentTool.value === 'brush') {
+    drawBrush(x,y);
   } else if (currentTool.value === 'mosaic') {
     drawMosaic(x, y)
   }
-  
+}
+
+const handleCanvasMouseMove = (e) => {
+  if (!isDrawing.value || !currentTool.value) return
+
+  const rect = canvasRef.value.getBoundingClientRect()
+  const x = e.clientX - rect.left
+  const y = e.clientY - rect.top
+
+  if (currentTool.value === 'brush') {
+    drawBrush(x, y)
+  } else if (currentTool.value === 'mosaic') {
+    drawMosaic(x, y)
+  }
+
   lastPos.value = { x, y }
 }
 
@@ -872,10 +831,10 @@ const getLinePoints = (x1, y1, x2, y2) => {
   const sx = x1 < x2 ? 1 : -1
   const sy = y1 < y2 ? 1 : -1
   let err = dx - dy
-  
+
   let x = x1
   let y = y1
-  
+
   while (true) {
     points.push({ x, y })
     if (x === x2 && y === y2) break
@@ -889,7 +848,7 @@ const getLinePoints = (x1, y1, x2, y2) => {
       y += sy
     }
   }
-  
+
   return points
 }
 
@@ -897,13 +856,13 @@ const getLinePoints = (x1, y1, x2, y2) => {
 const getAverageColor = (data) => {
   let r = 0, g = 0, b = 0
   const count = data.length / 4
-  
+
   for (let i = 0; i < data.length; i += 4) {
     r += data[i]
     g += data[i + 1]
     b += data[i + 2]
   }
-  
+
   return {
     r: Math.round(r / count),
     g: Math.round(g / count),
@@ -911,122 +870,7 @@ const getAverageColor = (data) => {
   }
 }
 
-// 添加画笔相关状态
-const brushColor = ref('#FF0000') // 默认色
-const brushSize = ref(5) // 默认大小
-const brushHistory = ref([]) // 用于保存绘制历史
 
-// 添加撤销功能
-const undoDrawing = () => {
-  if (brushHistory.value.length > 0) {
-    const previousState = brushHistory.value.pop()
-    const img = new Image()
-    img.onload = () => {
-      const ctx = canvasRef.value.getContext('2d')
-      ctx.clearRect(0, 0, canvasRef.value.width, canvasRef.value.height)
-      ctx.drawImage(img, 0, 0)
-    }
-    img.src = previousState
-  }
-}
-
-// 添加水印相关状态
-const watermarkText = ref('')
-const watermarkSize = ref(24)
-const watermarkColor = ref('#000000')
-const watermarkOpacity = ref(50)
-
-// 添加预定义颜色
-const predefineColors = [
-  '#ff4500',
-  '#ff8c00',
-  '#ffd700',
-  '#90ee90',
-  '#00ced1',
-  '#1e90ff',
-  '#c71585',
-  '#000000',
-  '#ffffff'
-]
-
-// 修改水印颜色处理方法
-const handleWatermarkColorChange = (color) => {
-  watermarkColor.value = color
-  updateWatermark()
-}
-
-// 添加水印模式和位置状态
-const watermarkMode = ref('single') // 'single' 或 'full'
-const watermarkPosition = ref({
-  x: 0,
-  y: 0
-})
-
-// 修改水印位置处理方法
-const handleWatermarkPosition = (position) => {
-  if (!cropArea.value) return
-  
-  const area = cropArea.value
-  const padding = watermarkSize.value // 使用文字大小作为边距
-  
-  switch (position) {
-    case 'left-top':
-      watermarkPosition.value = {
-        x: area.x + padding,
-        y: area.y + padding
-      }
-      break
-    case 'center-top':
-      watermarkPosition.value = {
-        x: area.x + area.width / 2,
-        y: area.y + padding
-      }
-      break
-    case 'right-top':
-      watermarkPosition.value = {
-        x: area.x + area.width - padding,
-        y: area.y + padding
-      }
-      break
-    case 'center':
-      watermarkPosition.value = {
-        x: area.x + area.width / 2,
-        y: area.y + area.height / 2
-      }
-      break
-    case 'left-bottom':
-      watermarkPosition.value = {
-        x: area.x + padding,
-        y: area.y + area.height - padding
-      }
-      break
-    case 'center-bottom':
-      watermarkPosition.value = {
-        x: area.x + area.width / 2,
-        y: area.y + area.height - padding
-      }
-      break
-    case 'right-bottom':
-      watermarkPosition.value = {
-        x: area.x + area.width - padding,
-        y: area.y + area.height - padding
-      }
-      break
-  }
-  
-  updateWatermark()
-}
-
-// 添加水印默认位置初始化
-const initWatermarkPosition = () => {
-  if (!cropArea.value) return
-  
-  // 设置水印位置为裁剪框中心
-  watermarkPosition.value = {
-    x: cropArea.value.x + cropArea.value.width / 2,
-    y: cropArea.value.y + cropArea.value.height / 2
-  }
-}
 
 // 添加历史记录状态
 const drawHistory = ref([])
@@ -1035,14 +879,14 @@ const maxHistoryLength = 20 // 限制历史记录数量
 // 添加保存历史记录的方法
 const saveDrawState = () => {
   if (!canvasRef.value) return
-  
+
   // 保存当前画布状态
   const state = canvasRef.value.toDataURL()
   drawHistory.value.push(state)
-  
+
   // 清空恢复历史
   redoHistory.value = []
-  
+
   // 限制历史记录数量
   if (drawHistory.value.length > maxHistoryLength) {
     drawHistory.value.shift()
@@ -1052,42 +896,42 @@ const saveDrawState = () => {
 // 修改撤销方法
 const undoDraw = () => {
   if (!drawHistory.value.length || !canvasRef.value) return
-  
+
   // 获取当前状态并保存到恢复历史
   const currentState = canvasRef.value.toDataURL()
   redoHistory.value.push(currentState)
-  
+
   // 获取上一个状态
   const previousState = drawHistory.value.pop()
   const img = new Image()
-  
+
   img.onload = () => {
     const ctx = canvasRef.value.getContext('2d')
     ctx.clearRect(0, 0, canvasRef.value.width, canvasRef.value.height)
     ctx.drawImage(img, 0, 0)
   }
-  
+
   img.src = previousState
 }
 
 // 添加恢复方法
 const redoDraw = () => {
   if (!redoHistory.value.length || !canvasRef.value) return
-  
+
   // 获取当前状态并保存到撤销历史
   const currentState = canvasRef.value.toDataURL()
   drawHistory.value.push(currentState)
-  
+
   // 获取下一个状态
   const nextState = redoHistory.value.pop()
   const img = new Image()
-  
+
   img.onload = () => {
     const ctx = canvasRef.value.getContext('2d')
     ctx.clearRect(0, 0, canvasRef.value.width, canvasRef.value.height)
     ctx.drawImage(img, 0, 0)
   }
-  
+
   img.src = nextState
 }
 
@@ -1119,249 +963,185 @@ onUnmounted(() => {
     <div class="tools-panel">
       <el-scrollbar :always="true">
         <!-- 尺寸调整输入框 -->
-      <div class="size-panel">
-        <div class="panel-title">尺寸调整</div>
-        <div class="size-inputs">
-          <div class="size-input-group">
-            <span class="size-label">宽度</span>
-            <el-input
-              v-model.number="cropArea.width"
-              type="number"
-              :max="canvasRef?.width || 0"
-              @input="value => handleSizeChange('width', value)"
-            >
-              <template #append>px</template>
-            </el-input>
-          </div>
-          <div class="size-input-group">
-            <span class="size-label">高度</span>
-            <el-input
-              v-model.number="cropArea.height"
-              type="number"
-              :max="canvasRef?.height || 0"
-              @input="value => handleSizeChange('height', value)"
-            >
-              <template #append>px</template>
-            </el-input>
+        <div class="size-panel">
+          <div class="panel-title">尺寸调整</div>
+          <div class="size-inputs">
+            <div class="size-input-group">
+              <span class="size-label">宽度</span>
+              <el-input v-model.number="cropArea.width" type="number" :max="canvasRef?.width || 0"
+                @input="value => handleSizeChange('width', value)">
+                <template #append>px</template>
+              </el-input>
+            </div>
+            <div class="size-input-group">
+              <span class="size-label">高度</span>
+              <el-input v-model.number="cropArea.height" type="number" :max="canvasRef?.height || 0"
+                @input="value => handleSizeChange('height', value)">
+                <template #append>px</template>
+              </el-input>
+            </div>
           </div>
         </div>
-      </div>
 
-      <!-- 旋转控制面板 -->
-      <div class="size-panel">
-        <div class="panel-title">旋转控制</div>
-        <div class="size-inputs">
-          <div class="size-input-group">
-            <span class="size-label">角度</span>
-            <el-input
-              v-model.number="rotateAngle"
-              type="number"
-              :min="-360"
-              :max="360"
-              @input="handleRotate"
-            >
-              <template #append>°</template>
-            </el-input>
-          </div>
-          <!-- 快捷旋转按钮 -->
-          <div class="rotate-buttons">
-            <el-button @click="handleRotate(-90)">左转90°</el-button>
-            <el-button @click="handleRotate(90)">右转90°</el-button>
-          </div>
-        </div>
-      </div>
-
-      <!-- 缩放控制面板 -->
-      <div class="size-panel">
-        <div class="panel-title">缩放控制</div>
-        <div class="size-inputs">
-          <div class="size-input-group">
-            <span class="size-label">缩放</span>
-            <el-input
-              v-model.number="scale"
-              type="number"
-              :min="10"
-              :max="200"
-              @input="handleScale"
-            >
-              <template #append>%</template>
-            </el-input>
-          </div>
-          <!-- 快捷缩放按钮 -->
-          <div class="scale-buttons">
-            <el-button @click="handleScale(-10)">缩小10%</el-button>
-            <el-button @click="handleScale(10)">放大10%</el-button>
-          </div>
-          <div class="scale-buttons">
-            <el-button @click="handleScale(100 - scale)">重置(100%)</el-button>
-          </div>
-        </div>
-      </div>
-
-      <!-- 位置控制面板 -->
-      <div class="size-panel">
-        <div class="panel-title">位置控制</div>
-        <div class="size-inputs">
-          <div class="size-input-group">
-            <span class="size-label">X轴</span>
-            <el-input
-              :model-value="Math.round(cropArea.x - imagePosition.x)"
-              type="number"
-              :min="0"
-              :max="imagePosition.width - cropArea.width"
-              @input="value => handlePositionChange('x', value)"
-            >
-              <template #append>px</template>
-            </el-input>
-          </div>
-          <div class="size-input-group">
-            <span class="size-label">Y轴</span>
-            <el-input
-              :model-value="Math.round(cropArea.y - imagePosition.y)"
-              type="number"
-              :min="0"
-              :max="imagePosition.height - cropArea.height"
-              @input="value => handlePositionChange('y', value)"
-            >
-              <template #append>px</template>
-            </el-input>
-          </div>
-          <!-- 快捷位置按钮 -->
-          <div class="position-buttons">
-            <el-button @click="handleQuickPosition('left-top')">左上</el-button>
-            <el-button @click="handleQuickPosition('center-top')">顶部居中</el-button>
-            <el-button @click="handleQuickPosition('right-top')">右上</el-button>
-          </div>
-          <div class="position-buttons">
-            <el-button @click="handleQuickPosition('center')">居中</el-button>
-          </div>
-          <div class="position-buttons">
-            <el-button @click="handleQuickPosition('left-bottom')">左下</el-button>
-            <el-button @click="handleQuickPosition('center-bottom')">底部居中</el-button>
-            <el-button @click="handleQuickPosition('right-bottom')">右下</el-button>
-          </div>
-        </div>
-      </div>
-       <!-- 在位置控制面板后添加水印配置面板 -->
-       <div class="size-panel">
-        <div class="panel-title">水印设置</div>
-        <div class="size-inputs">
-          <!-- 水印文本输入 -->
-          <div class="size-input-group">
-            <span class="size-label">文本</span>
-            <el-input
-              v-model="watermarkText"
-              placeholder="请输入水印文字"
-              @change="updateWatermark"
-            />
-          </div>
-          
-          <!-- 水印模式 -->
-          <div class="size-input-group">
-            <span class="size-label">模式</span>
-            <el-radio-group v-model="watermarkMode" @change="updateWatermark">
-              <el-radio value="single" label="单个">单个</el-radio>
-              <el-radio value="full" label="满屏">满屏</el-radio>
-            </el-radio-group>
-          </div>
-          
-          <!-- 单个水印位置控制 -->
-          <template v-if="watermarkMode === 'single'">
+        <!-- 位置控制面板 -->
+        <div class="size-panel">
+          <div class="panel-title">位置控制</div>
+          <div class="size-inputs">
             <div class="size-input-group">
               <span class="size-label">X轴</span>
-              <el-input
-                v-model.number="watermarkPosition.x"
-                type="number"
-                :min="0"
-                :max="canvasRef?.width || 0"
-                @input="updateWatermark"
-              >
+              <el-input :model-value="Math.round(cropArea.x - imagePosition.x)" type="number" :min="0"
+                :max="imagePosition.width - cropArea.width" @input="value => handlePositionChange('x', value)">
                 <template #append>px</template>
               </el-input>
             </div>
             <div class="size-input-group">
               <span class="size-label">Y轴</span>
-              <el-input
-                v-model.number="watermarkPosition.y"
-                type="number"
-                :min="0"
-                :max="canvasRef?.height || 0"
-                @input="updateWatermark"
-              >
+              <el-input :model-value="Math.round(cropArea.y - imagePosition.y)" type="number" :min="0"
+                :max="imagePosition.height - cropArea.height" @input="value => handlePositionChange('y', value)">
                 <template #append>px</template>
               </el-input>
             </div>
             <!-- 快捷位置按钮 -->
             <div class="position-buttons">
-              <el-button @click="handleWatermarkPosition('left-top')">左上</el-button>
-              <el-button @click="handleWatermarkPosition('center-top')">顶部居中</el-button>
-              <el-button @click="handleWatermarkPosition('right-top')">右上</el-button>
+              <el-button @click="handleQuickPosition('left-top')">左上</el-button>
+              <el-button @click="handleQuickPosition('center-top')">顶部居中</el-button>
+              <el-button @click="handleQuickPosition('right-top')">右上</el-button>
             </div>
             <div class="position-buttons">
-              <el-button @click="handleWatermarkPosition('center')">居中</el-button>
+              <el-button @click="handleQuickPosition('center')">居中</el-button>
             </div>
             <div class="position-buttons">
-              <el-button @click="handleWatermarkPosition('left-bottom')">左下</el-button>
-              <el-button @click="handleWatermarkPosition('center-bottom')">底部居中</el-button>
-              <el-button @click="handleWatermarkPosition('right-bottom')">右下</el-button>
+              <el-button @click="handleQuickPosition('left-bottom')">左下</el-button>
+              <el-button @click="handleQuickPosition('center-bottom')">底部居中</el-button>
+              <el-button @click="handleQuickPosition('right-bottom')">右下</el-button>
             </div>
-          </template>
-          
-          <!-- 其他水印设置保持不变 -->
-          <div class="size-input-group">
-            <span class="size-label">大小</span>
-            <el-input
-              v-model.number="watermarkSize"
-              type="number"
-              :min="12"
-              :max="72"
-              @input="updateWatermark"
-            >
-              <template #append>px</template>
-            </el-input>
-          </div>
-          
-          <!-- 水印颜色 -->
-          <div class="size-input-group color-picker-group">
-            <span class="size-label">颜色</span>
-            <el-color-picker
-              v-model="watermarkColor"
-              :predefine="predefineColors"
-              show-alpha
-              @change="handleWatermarkColorChange"
-            />
-          </div>
-          
-          <!-- 水印透明度 -->
-          <div class="size-input-group">
-            <span class="size-label">透明度</span>
-            <el-slider
-              v-model="watermarkOpacity"
-              :min="0"
-              :max="100"
-              @input="updateWatermark"
-            />
           </div>
         </div>
-      </div>
+
+        <!-- 旋转控制面板 -->
+        <div class="size-panel">
+          <div class="panel-title">旋转控制</div>
+          <div class="size-inputs">
+            <div class="size-input-group">
+              <span class="size-label">角度</span>
+              <el-input v-model.number="config.rotateAngle" type="number" :min="-360" :max="360" @input="handleRotate">
+                <template #append>°</template>
+              </el-input>
+            </div>
+            <!-- 快捷旋转按钮 -->
+            <div class="rotate-buttons">
+              <el-button @click="handleRotate(-90)">左转90°</el-button>
+              <el-button @click="handleRotate(90)">右转90°</el-button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 缩放控制面板 -->
+        <div class="size-panel">
+          <div class="panel-title">缩放控制</div>
+          <div class="size-inputs">
+            <div class="size-input-group">
+              <span class="size-label">缩放</span>
+              <el-input v-model.number="config.scale" type="number" :min="10" :max="200" @input="handleScale">
+                <template #append>%</template>
+              </el-input>
+            </div>
+            <!-- 快捷缩放按钮 -->
+            <div class="scale-buttons">
+              <el-button @click="handleScale(-10)">缩小10%</el-button>
+              <el-button @click="handleScale(10)">放大10%</el-button>
+            </div>
+            <div class="scale-buttons">
+              <el-button @click="handleScale(100 - config.scale)">重置(100%)</el-button>
+            </div>
+          </div>
+        </div>
+
+
+        <!-- 在位置控制面板后添加水印配置面板 -->
+        <div class="size-panel">
+          <div class="panel-title">水印设置</div>
+          <div class="size-inputs">
+            <!-- 水印文本输入 -->
+            <div class="size-input-group">
+              <span class="size-label">文本</span>
+              <el-input v-model="config.watermark.text" placeholder="请输入水印文字" @change="updateWatermark" />
+            </div>
+
+            <!-- 水印模式 -->
+            <div class="size-input-group">
+              <span class="size-label">模式</span>
+              <el-radio-group v-model="config.watermark.mode" @change="updateWatermark">
+                <el-radio value="single" label="单个">单个</el-radio>
+                <el-radio value="full" label="满屏">满屏</el-radio>
+              </el-radio-group>
+            </div>
+
+            <!-- 单个水印位置控制 -->
+            <template v-if="config.watermark.mode === 'single'">
+              <div class="size-input-group">
+                <span class="size-label">X轴</span>
+                <el-input v-model.number="config.watermark.position.x" type="number" :min="0"
+                  :max="canvasRef?.width || 0" @input="updateWatermark">
+                  <template #append>px</template>
+                </el-input>
+              </div>
+              <div class="size-input-group">
+                <span class="size-label">Y轴</span>
+                <el-input v-model.number="config.watermark.position.y" type="number" :min="0"
+                  :max="canvasRef?.height || 0" @input="updateWatermark">
+                  <template #append>px</template>
+                </el-input>
+              </div>
+              <!-- 快捷位置按钮 -->
+              <div class="position-buttons">
+                <el-button @click="handleWatermarkPosition('left-top')">左上</el-button>
+                <el-button @click="handleWatermarkPosition('center-top')">顶部居中</el-button>
+                <el-button @click="handleWatermarkPosition('right-top')">右上</el-button>
+              </div>
+              <div class="position-buttons">
+                <el-button @click="handleWatermarkPosition('center')">居中</el-button>
+              </div>
+              <div class="position-buttons">
+                <el-button @click="handleWatermarkPosition('left-bottom')">左下</el-button>
+                <el-button @click="handleWatermarkPosition('center-bottom')">底部居中</el-button>
+                <el-button @click="handleWatermarkPosition('right-bottom')">右下</el-button>
+              </div>
+            </template>
+
+            <!-- 其他水印设置保持不变 -->
+            <div class="size-input-group">
+              <span class="size-label">大小</span>
+              <el-input v-model.number="config.watermark.size" type="number" :min="12" :max="72"
+                @input="updateWatermark">
+                <template #append>px</template>
+              </el-input>
+            </div>
+
+            <!-- 水印颜色 -->
+            <div class="size-input-group color-picker-group">
+              <span class="size-label">颜色</span>
+              <el-color-picker v-model="config.watermark.color" :predefine="predefineColors" show-alpha
+                @change="handleWatermarkColorChange" />
+            </div>
+
+            <!-- 水印透明度 -->
+            <div class="size-input-group">
+              <span class="size-label">透明度</span>
+              <el-slider v-model="config.watermark.opacity" :min="0" :max="100" @input="updateWatermark" />
+            </div>
+          </div>
+        </div>
       </el-scrollbar>
 
-     
+
 
       <!-- 操作按钮 -->
       <div class="action-buttons">
-        <el-button 
-          type="danger" 
-          :disabled="!originalImage"
-          @click="originalImage = null"
-        >
+        <el-button type="danger" :disabled="!originalImage" @click="originalImage = null">
           取消编辑
         </el-button>
-        <el-button 
-          type="primary"
-          :disabled="!originalImage"
-          @click="confirmCrop"
-        >
+        <el-button type="primary" :disabled="!originalImage" @click="confirmCrop">
           确认裁剪
         </el-button>
       </div>
@@ -1372,19 +1152,14 @@ onUnmounted(() => {
       <!-- 编辑器容器 -->
       <div ref="containerRef" class="editor-container">
         <div v-if="!originalImage" class="upload-area">
-          <input 
-            type="file" 
-            accept="image/*" 
-            @change="handleFileChange"
-            class="file-input"
-            id="file-input"
-          >
+          <input type="file" accept="image/*" @change="handleFileChange" class="file-input" id="file-input">
           <label for="file-input" class="upload-content">
             <div class="upload-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7"/>
-                <polyline points="17 8 12 3 7 8"/>
-                <line x1="12" y1="3" x2="12" y2="15"/>
+              <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2">
+                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
               </svg>
             </div>
             <div class="upload-text">
@@ -1396,58 +1171,26 @@ onUnmounted(() => {
         </div>
 
         <template v-else>
-          <canvas
-            ref="canvasRef"
-            class="editor-canvas"
-            :class="{ drawing: isDrawing }"
-            @mousedown="handleCanvasMouseDown"
-            @mousemove="handleCanvasMouseMove"
-            @mouseup="handleCanvasMouseUp"
-            @mouseleave="handleCanvasMouseUp"
-          ></canvas>
-          
+          <canvas ref="canvasRef" class="editor-canvas" :class="{ drawing: isDrawing }"
+            @mousedown="handleCanvasMouseDown" @mousemove="handleCanvasMouseMove" @mouseup="handleCanvasMouseUp"
+            @mouseleave="handleCanvasMouseUp"></canvas>
+
           <!-- 裁剪框 -->
-          <div 
-            ref="cropBoxRef"
-            class="crop-box"
-            @mousedown="handleCropBoxMouseDown"
-            :style="{ pointerEvents: ['mosaic', 'brush'].includes(currentTool) ? 'none' : 'auto' }"
-          >
+          <div ref="cropBoxRef" class="crop-box" @mousedown="handleCropBoxMouseDown"
+            :style="{ pointerEvents: ['mosaic', 'brush'].includes(currentTool) ? 'none' : 'auto' }">
             <!-- 四角的控制点 -->
-            <div 
-              class="resize-handle corner top-left"
-              @mousedown="(e) => handleResizeMouseDown(e, 'top-left')"
-            ></div>
-            <div 
-              class="resize-handle corner top-right"
-              @mousedown="(e) => handleResizeMouseDown(e, 'top-right')"
-            ></div>
-            <div 
-              class="resize-handle corner bottom-left"
-              @mousedown="(e) => handleResizeMouseDown(e, 'bottom-left')"
-            ></div>
-            <div 
-              class="resize-handle corner bottom-right"
-              @mousedown="(e) => handleResizeMouseDown(e, 'bottom-right')"
-            ></div>
+            <div class="resize-handle corner top-left" @mousedown="(e) => handleResizeMouseDown(e, 'top-left')"></div>
+            <div class="resize-handle corner top-right" @mousedown="(e) => handleResizeMouseDown(e, 'top-right')"></div>
+            <div class="resize-handle corner bottom-left" @mousedown="(e) => handleResizeMouseDown(e, 'bottom-left')">
+            </div>
+            <div class="resize-handle corner bottom-right" @mousedown="(e) => handleResizeMouseDown(e, 'bottom-right')">
+            </div>
 
             <!-- 边的中点控制点 -->
-            <div 
-              class="resize-handle edge top"
-              @mousedown="(e) => handleResizeMouseDown(e, 'top')"
-            ></div>
-            <div 
-              class="resize-handle edge right"
-              @mousedown="(e) => handleResizeMouseDown(e, 'right')"
-            ></div>
-            <div 
-              class="resize-handle edge bottom"
-              @mousedown="(e) => handleResizeMouseDown(e, 'bottom')"
-            ></div>
-            <div 
-              class="resize-handle edge left"
-              @mousedown="(e) => handleResizeMouseDown(e, 'left')"
-            ></div>
+            <div class="resize-handle edge top" @mousedown="(e) => handleResizeMouseDown(e, 'top')"></div>
+            <div class="resize-handle edge right" @mousedown="(e) => handleResizeMouseDown(e, 'right')"></div>
+            <div class="resize-handle edge bottom" @mousedown="(e) => handleResizeMouseDown(e, 'bottom')"></div>
+            <div class="resize-handle edge left" @mousedown="(e) => handleResizeMouseDown(e, 'left')"></div>
           </div>
         </template>
       </div>
@@ -1455,41 +1198,25 @@ onUnmounted(() => {
       <!-- 底部工具栏 -->
       <div v-if="originalImage" class="bottom-toolbar">
         <el-tooltip content="马赛克" placement="top">
-          <div 
-            class="tool-item"
-            :class="{ active: currentTool === 'mosaic' }"
-            @click="toggleTool('mosaic')"
-          >
+          <div class="tool-item" :class="{ active: currentTool === 'mosaic' }" @click="toggleTool('mosaic')">
             <Camera style="width: 1em; height: 1em;" />
           </div>
         </el-tooltip>
-        
+
         <el-tooltip content="画笔" placement="top">
-          <div 
-            class="tool-item"
-            :class="{ active: currentTool === 'brush' }"
-            @click="toggleTool('brush')"
-          >
+          <div class="tool-item" :class="{ active: currentTool === 'brush' }" @click="toggleTool('brush')">
             <Edit style="width: 1em; height: 1em;" />
           </div>
         </el-tooltip>
-        
+
         <el-tooltip content="撤销" placement="top">
-          <div 
-            class="tool-item"
-            :class="{ disabled: !drawHistory.length }"
-            @click="drawHistory.length && undoDraw()"
-          >
+          <div class="tool-item" :class="{ disabled: !drawHistory.length }" @click="drawHistory.length && undoDraw()">
             <ArrowLeft style="width: 1em; height: 1em;" />
           </div>
         </el-tooltip>
-        
+
         <el-tooltip content="恢复" placement="top">
-          <div 
-            class="tool-item"
-            :class="{ disabled: !redoHistory.length }"
-            @click="redoHistory.length && redoDraw()"
-          >
+          <div class="tool-item" :class="{ disabled: !redoHistory.length }" @click="redoHistory.length && redoDraw()">
             <ArrowRight style="width: 1em; height: 1em;" />
           </div>
         </el-tooltip>
@@ -1944,7 +1671,7 @@ onUnmounted(() => {
   padding: 8px;
 }
 
-.el-button+.el-button{
+.el-button+.el-button {
   margin-left: 0px;
 }
 
@@ -2049,7 +1776,8 @@ onUnmounted(() => {
   height: 100%;
   background: #f5f5f5;
   cursor: crosshair;
-  user-select: none; /* 防止拖动时选文本 */
+  user-select: none;
+  /* 防止拖动时选文本 */
 }
 
 .editor-canvas.drawing {
@@ -2077,7 +1805,8 @@ onUnmounted(() => {
   border: 2px solid #fff;
   box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
   cursor: move;
-  transition: pointer-events 0.2s; /* 添加过渡效果 */
+  transition: pointer-events 0.2s;
+  /* 添加过渡效果 */
 }
 
 /* 调整大的控制点 */
@@ -2279,7 +2008,8 @@ onUnmounted(() => {
   border-radius: 8px;
   display: flex;
   align-items: center;
-  gap: 12px; /* 增加工具之间的间距 */
+  gap: 12px;
+  /* 增加工具之间的间距 */
 }
 
 .tool-item {
