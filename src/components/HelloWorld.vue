@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted, nextTick, computed } from 'vue'
-import { ElCollapse, ElCollapseItem, ElButton, ElInput,ElTooltip,ElColorPicker,ElSlider,ElScrollbar } from 'element-plus'
+import { ElCollapse, ElCollapseItem, ElButton, ElInput,ElTooltip,ElColorPicker,ElSlider,ElScrollbar,ElRadioGroup, ElRadio } from 'element-plus'
 import 'element-plus/dist/index.css'
 import { Camera, Edit } from '@element-plus/icons-vue'
 const imgUrl = ref('')
@@ -151,8 +151,8 @@ const initCanvas = (image) => {
 // 添加图片位置状态
 const imagePosition = ref({ x: 0, y: 0, width: 0, height: 0 })
 
-// 修改 drawImage 方法，记录图片位置
-const drawImage = (image) => {
+// 修改 drawImage 方法，添加一个参数来控制是否需要重绘水印
+const drawImage = (image, skipWatermark = false) => {
   const canvas = canvasRef.value
   const ctx = canvas.getContext('2d')
   
@@ -170,7 +170,7 @@ const drawImage = (image) => {
   const x = (canvas.width - scaledWidth) / 2
   const y = (canvas.height - scaledHeight) / 2
   
-  // 记录图片位置 - 这是图片在画布中的实际渲染位置
+  // 记录图片位置
   imagePosition.value = {
     x,
     y,
@@ -187,8 +187,8 @@ const drawImage = (image) => {
     scaledHeight
   )
   
-  // 如果有水印文本，重新绘制水印
-  if (watermarkText.value) {
+  // 如果有水印文本且不跳过水印重绘，则绘制水印
+  if (watermarkText.value && !skipWatermark) {
     updateWatermark()
   }
 }
@@ -330,7 +330,7 @@ const handleMouseMove = (e) => {
     area.y = Math.max(0, Math.min(canvas.height - area.height, area.y + movementY))
   }
 
-  // 重���制
+  // 重制
   if (area.isResizing || area.isDragging) {
     drawImage(originalImage.value)
     drawCropArea()
@@ -511,7 +511,7 @@ const handleSizeChange = (type, value) => {
     const maxHeight = canvas.height - Math.round(cropArea.value.y)
     cropArea.value.height = Math.round(Math.min(newValue, maxHeight))
     
-    // 如果超出画布，调整位置
+    // 如��超出画布，调整位置
     if (cropArea.value.y + newValue > canvas.height) {
       cropArea.value.y = Math.round(canvas.height - newValue)
     }
@@ -549,7 +549,7 @@ const handleScale = (value) => {
   // 清空画布
   ctx.clearRect(0, 0, canvas.width, canvas.height)
   
-  // 计算基础缩放比例
+  // 计算基础放比例
   const baseScale = Math.min(
     canvas.width / originalImage.value.width,
     canvas.height / originalImage.value.height
@@ -821,7 +821,7 @@ const getAverageColor = (data) => {
 }
 
 // 添加画笔相关状态
-const brushColor = ref('#FF0000') // 默认红色
+const brushColor = ref('#FF0000') // 默认色
 const brushSize = ref(5) // 默认大小
 const brushHistory = ref([]) // 用于保存绘制历史
 
@@ -864,57 +864,123 @@ const handleWatermarkColorChange = (color) => {
   updateWatermark()
 }
 
+// 添加水印模式和位置状态
+const watermarkMode = ref('single') // 'single' 或 'full'
+const watermarkPosition = ref({
+  x: 0,
+  y: 0
+})
+
+// 修改水印位置处理方法
+const handleWatermarkPosition = (position) => {
+  if (!canvasRef.value) return
+  
+  const canvas = canvasRef.value
+  const textWidth = canvas.getContext('2d').measureText(watermarkText.value).width
+  const padding = 20 // 边距
+  
+  switch (position) {
+    case 'left-top':
+      watermarkPosition.value = { x: padding, y: watermarkSize.value + padding }
+      break
+    case 'center-top':
+      watermarkPosition.value = { x: canvas.width / 2, y: watermarkSize.value + padding }
+      break
+    case 'right-top':
+      watermarkPosition.value = { x: canvas.width - padding, y: watermarkSize.value + padding }
+      break
+    case 'center':
+      watermarkPosition.value = { x: canvas.width / 2, y: canvas.height / 2 }
+      break
+    case 'left-bottom':
+      watermarkPosition.value = { x: padding, y: canvas.height - padding }
+      break
+    case 'center-bottom':
+      watermarkPosition.value = { x: canvas.width / 2, y: canvas.height - padding }
+      break
+    case 'right-bottom':
+      watermarkPosition.value = { x: canvas.width - padding, y: canvas.height - padding }
+      break
+  }
+  
+  updateWatermark()
+}
+
 // 修改更新水印方法
 const updateWatermark = () => {
-  if (!canvasRef.value || !originalImage.value) return
+  if (!canvasRef.value || !originalImage.value || !watermarkText.value) return
   
   const ctx = canvasRef.value.getContext('2d')
-  
-  // 先清空画布
-  ctx.clearRect(0, 0, canvasRef.value.width, canvasRef.value.height)
-  
-  // 重新绘制原图
   const canvas = canvasRef.value
-  const scale = Math.min(
-    canvas.width / originalImage.value.width,
-    canvas.height / originalImage.value.height
-  )
   
-  const scaledWidth = originalImage.value.width * scale
-  const scaledHeight = originalImage.value.height * scale
-  const x = (canvas.width - scaledWidth) / 2
-  const y = (canvas.height - scaledHeight) / 2
+  // 先重绘原图
+  drawImage(originalImage.value, true)
   
-  ctx.drawImage(
-    originalImage.value,
-    x, y,
-    scaledWidth,
-    scaledHeight
-  )
+  // 设置水印样式
+  ctx.font = `${watermarkSize.value}px Arial`
   
-  // 如果有水印文本，添加水印
-  if (watermarkText.value) {
-    // 设置水印样式
-    ctx.font = `${watermarkSize.value}px Arial`
-    
-    // 处理颜色和透明度
-    if (watermarkColor.value.startsWith('#')) {
-      // 如果是十六进制颜色
-      const opacity = Math.round(watermarkOpacity.value * 2.55).toString(16).padStart(2, '0')
-      ctx.fillStyle = `${watermarkColor.value}${opacity}`
-    } else {
-      // 如果是 rgba 颜色
-      const opacity = watermarkOpacity.value / 100
-      ctx.fillStyle = watermarkColor.value.replace(/[\d.]+\)$/, `${opacity})`)
-    }
-    
+  // 处理颜色和透明度
+  const color = watermarkColor.value
+  const alpha = watermarkOpacity.value / 100 // 将透明度转换为0-1之间的值
+  
+  // 如果是十六进制颜色，转换为 rgba
+  if (color.startsWith('#')) {
+    const r = parseInt(color.slice(1, 3), 16)
+    const g = parseInt(color.slice(3, 5), 16)
+    const b = parseInt(color.slice(5, 7), 16)
+    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`
+  } else {
+    // 如果已经是 rgba 格式，直接替换透明度
+    ctx.fillStyle = color.replace(/[\d.]+\)$/, `${alpha})`)
+  }
+  
+  if (watermarkMode.value === 'single') {
+    // 单个水印
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     
-    // 在画布中心绘制水印
-    const centerX = canvasRef.value.width / 2
-    const centerY = canvasRef.value.height / 2
-    ctx.fillText(watermarkText.value, centerX, centerY)
+    // 使用设定的位置绘制水印
+    ctx.fillText(
+      watermarkText.value,
+      watermarkPosition.value.x,
+      watermarkPosition.value.y
+    )
+  } else {
+    // 满屏水印
+    ctx.save()
+    
+    // 设置裁剪区域为画布大小
+    ctx.beginPath()
+    ctx.rect(0, 0, canvas.width, canvas.height)
+    ctx.clip()
+    
+    // 设置文本样式
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'top'
+    
+    // 计算水印间距
+    const textWidth = ctx.measureText(watermarkText.value).width
+    const gap = textWidth + 50
+    
+    // 设置旋转角度
+    ctx.translate(canvas.width / 2, canvas.height / 2)
+    ctx.rotate(-30 * Math.PI / 180)
+    ctx.translate(-canvas.width / 2, -canvas.height / 2)
+    
+    // 计算需要绘制的范围
+    const startX = -canvas.width
+    const startY = -canvas.height
+    const endX = canvas.width * 2
+    const endY = canvas.height * 2
+    
+    // 绘制水印网格
+    for (let y = startY; y < endY; y += gap) {
+      for (let x = startX; x < endX; x += gap) {
+        ctx.fillText(watermarkText.value, x, y)
+      }
+    }
+    
+    ctx.restore()
   }
 }
 
@@ -922,7 +988,7 @@ const updateWatermark = () => {
 
 <template>
   <div class="container">
-    <!-- 左侧配置面板 -->
+    <!-- 侧配置面板 -->
     <div class="tools-panel">
       <el-scrollbar :always="true">
         <!-- 尺寸调整输入框 -->
@@ -1063,7 +1129,58 @@ const updateWatermark = () => {
             />
           </div>
           
-          <!-- 水印大小 -->
+          <!-- 印模式 -->
+          <div class="size-input-group">
+            <span class="size-label">模式</span>
+            <el-radio-group v-model="watermarkMode" @change="updateWatermark">
+              <el-radio value="single" label="单个">单个</el-radio>
+              <el-radio value="full" label="满屏">满屏</el-radio>
+            </el-radio-group>
+          </div>
+          
+          <!-- 单个水印位置控制 -->
+          <template v-if="watermarkMode === 'single'">
+            <div class="size-input-group">
+              <span class="size-label">X轴</span>
+              <el-input
+                v-model.number="watermarkPosition.x"
+                type="number"
+                :min="0"
+                :max="canvasRef?.width || 0"
+                @input="updateWatermark"
+              >
+                <template #append>px</template>
+              </el-input>
+            </div>
+            <div class="size-input-group">
+              <span class="size-label">Y轴</span>
+              <el-input
+                v-model.number="watermarkPosition.y"
+                type="number"
+                :min="0"
+                :max="canvasRef?.height || 0"
+                @input="updateWatermark"
+              >
+                <template #append>px</template>
+              </el-input>
+            </div>
+            <!-- 快捷位置按钮 -->
+            <div class="position-buttons">
+              <el-button @click="handleWatermarkPosition('left-top')">左上</el-button>
+              <el-button @click="handleWatermarkPosition('center-top')">顶部居中</el-button>
+              <el-button @click="handleWatermarkPosition('right-top')">右上</el-button>
+            </div>
+            <div class="position-buttons">
+              <el-button @click="handleWatermarkPosition('center')">居中</el-button>
+            </div>
+            <div class="position-buttons">
+              <el-button @click="handleWatermarkPosition('left-bottom')">左下</el-button>
+              <el-button @click="handleWatermarkPosition('center-bottom')">底部居中</el-button>
+              <el-button @click="handleWatermarkPosition('right-bottom')">右下</el-button>
+            </div>
+          </template>
+          
+          <!-- 其他水印设置保持不变 -->
           <div class="size-input-group">
             <span class="size-label">大小</span>
             <el-input
@@ -1565,7 +1682,7 @@ const updateWatermark = () => {
   text-align: center;
 }
 
-/* 添加点击空白处关闭拉面的处理 */
+/* 添加点击空白处关闭拉面的处�� */
 @media (max-width: 768px) {
   .ratio-options {
     position: fixed;
@@ -1842,7 +1959,7 @@ const updateWatermark = () => {
   height: 100%;
   background: #f5f5f5;
   cursor: crosshair;
-  user-select: none; /* 防止拖动时选中文本 */
+  user-select: none; /* 防止拖动时选文本 */
 }
 
 .editor-canvas.drawing {
@@ -2072,7 +2189,7 @@ const updateWatermark = () => {
   border-radius: 8px;
   display: flex;
   align-items: center;
-  gap: 12px; /* 增加工���之间的间距 */
+  gap: 12px; /* 增加工具之间的间距 */
 }
 
 .tool-item {
