@@ -1,8 +1,8 @@
 <script setup>
 import { ref, onMounted, nextTick, computed } from 'vue'
-import { ElCollapse, ElCollapseItem, ElButton, ElInput } from 'element-plus'
+import { ElCollapse, ElCollapseItem, ElButton, ElInput,ElTooltip } from 'element-plus'
 import 'element-plus/dist/index.css'
-
+import { Camera } from '@element-plus/icons-vue'
 const imgUrl = ref('')
 const canvasRef = ref(null)
 const cropBoxRef = ref(null)
@@ -994,14 +994,18 @@ onMounted(() => {
           
           <!-- 底部工具栏 -->
           <div class="bottom-toolbar">
-            <div 
+            <el-tooltip
+             placement="top"
+             content="马赛克"
+            >
+              <div 
               class="tool-item"
               :class="{ active: currentTool === 'mosaic' }"
               @click="toggleTool('mosaic')"
             >
-              <i class="tool-icon">🔲</i>
-              <span class="tool-label">马赛克</span>
+               <Camera style="width: 1em; height: 1em;"> </Camera>
             </div>
+            </el-tooltip>
             <!-- 后续可以添加更多工具 -->
           </div>
         </template>
@@ -1539,12 +1543,11 @@ onMounted(() => {
 }
 
 .tool-item {
-  flex: 1;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: 6px;
+  justify-content: center;
   cursor: pointer;
   transition: all 0.2s;
   background: white;
@@ -1846,13 +1849,6 @@ onMounted(() => {
 }
 
 .tool-item {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: 6px;
   cursor: pointer;
   background: #f5f5f5;
   transition: all 0.2s;
