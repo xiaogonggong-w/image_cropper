@@ -1,6 +1,6 @@
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
-import { ElCollapse, ElCollapseItem, ElButton } from 'element-plus'
+import { ref, onMounted, nextTick, computed } from 'vue'
+import { ElCollapse, ElCollapseItem, ElButton, ElInput } from 'element-plus'
 import 'element-plus/dist/index.css'
 
 const imgUrl = ref('')
@@ -20,6 +20,12 @@ const cropArea = ref({
 
 // 添加 editor-container 的引用
 const containerRef = ref(null)
+
+// 移除配置组定义，直接使用尺寸输入
+const sizeInputs = computed(() => ({
+  width: cropArea.value?.width?.toFixed(0) || '',
+  height: cropArea.value?.height?.toFixed(0) || ''
+}))
 
 // 监听 canvas 挂载
 onMounted(() => {
@@ -90,10 +96,11 @@ const updateCropBoxPosition = () => {
   if (!cropBoxRef.value) return
   
   const area = cropArea.value
-  cropBoxRef.value.style.left = `${area.x}px`
-  cropBoxRef.value.style.top = `${area.y}px`
-  cropBoxRef.value.style.width = `${area.width}px`
-  cropBoxRef.value.style.height = `${area.height}px`
+  // 确保所有值都是整数
+  cropBoxRef.value.style.left = `${Math.round(area.x)}px`
+  cropBoxRef.value.style.top = `${Math.round(area.y)}px`
+  cropBoxRef.value.style.width = `${Math.round(area.width)}px`
+  cropBoxRef.value.style.height = `${Math.round(area.height)}px`
 }
 
 // 处理裁剪框拖动
@@ -179,7 +186,7 @@ const handleMouseDown = (e) => {
     }
   }
 
-  // 如果不是点击在控制点上，检查是否点击在裁剪框内
+  // 如果不是点击在制点上，检查是否点击在裁剪框内
   if (
     offsetX >= area.x &&
     offsetX <= area.x + area.width &&
@@ -375,34 +382,76 @@ const handleResizeMouseDown = (e, position) => {
   document.addEventListener('mousemove', handleMouseMove)
   document.addEventListener('mouseup', handleMouseUp)
 }
+
+// 修改尺寸修改处理方法
+const handleSizeChange = (type, value) => {
+  if (!cropArea.value || !canvasRef.value) return
+  
+  const canvas = canvasRef.value
+  const newValue = Math.round(parseInt(value)) // 确保是整数
+  
+  if (isNaN(newValue)) return
+  
+  if (type === 'width') {
+    // 只限制最大宽度
+    const maxWidth = canvas.width - Math.round(cropArea.value.x)
+    cropArea.value.width = Math.round(Math.min(newValue, maxWidth))
+    
+    // 如果超出画布，调整位置
+    if (cropArea.value.x + newValue > canvas.width) {
+      cropArea.value.x = Math.round(canvas.width - newValue)
+    }
+  } else if (type === 'height') {
+    // 只限制最大高度
+    const maxHeight = canvas.height - Math.round(cropArea.value.y)
+    cropArea.value.height = Math.round(Math.min(newValue, maxHeight))
+    
+    // 如果超出画布，调整位置
+    if (cropArea.value.y + newValue > canvas.height) {
+      cropArea.value.y = Math.round(canvas.height - newValue)
+    }
+  }
+  
+  updateCropBoxPosition()
+  
+  if (originalImage.value) {
+    drawImage(originalImage.value)
+  }
+}
 </script>
 
 <template>
   <div class="container">
     <!-- 工具面板 -->
     <div class="tools-panel">
-      <el-collapse v-model="activeNames">
-        <el-collapse-item 
-          v-for="group in configGroups" 
-          :key="group.id"
-          :name="group.id"
-          :disabled="!imgUrl"
-        >
-          <template #title>
-            {{ group.title }}
-          </template>
-          
-          <div class="config-options">
-            <el-button
-              v-for="option in group.options"
-              :key="option.value"
-              text
+      <!-- 尺寸调整输入框 -->
+      <div class="size-panel">
+        <div class="panel-title">尺寸调整</div>
+        <div class="size-inputs">
+          <div class="size-input-group">
+            <span class="size-label">宽度</span>
+            <el-input
+              v-model.number="cropArea.width"
+              type="number"
+              :max="canvasRef?.width || 0"
+              @input="value => handleSizeChange('width', value)"
             >
-              {{ option.label }}
-            </el-button>
+              <template #append>px</template>
+            </el-input>
           </div>
-        </el-collapse-item>
-      </el-collapse>
+          <div class="size-input-group">
+            <span class="size-label">高度</span>
+            <el-input
+              v-model.number="cropArea.height"
+              type="number"
+              :max="canvasRef?.height || 0"
+              @input="value => handleSizeChange('height', value)"
+            >
+              <template #append>px</template>
+            </el-input>
+          </div>
+        </div>
+      </div>
 
       <!-- 操作按钮 -->
       <div class="action-buttons">
@@ -545,7 +594,7 @@ const handleResizeMouseDown = (e, position) => {
   width: 24px;
 }
 
-/* 作按钮容器 */
+/* 作按钮器 */
 .action-buttons {
   margin-top: auto;
   padding-top: 16px;
@@ -839,7 +888,7 @@ const handleResizeMouseDown = (e, position) => {
   text-align: center;
 }
 
-/* 添加点击空白处关闭拉面���的处理 */
+/* 添加点击空白处关闭拉面的处理 */
 @media (max-width: 768px) {
   .ratio-options {
     position: fixed;
@@ -1143,7 +1192,7 @@ const handleResizeMouseDown = (e, position) => {
   cursor: move;
 }
 
-/* 调整大小的控制点 */
+/* 调整大的控制点 */
 .resize-handle {
   position: absolute;
   width: 12px;
@@ -1216,4 +1265,77 @@ const handleResizeMouseDown = (e, position) => {
   transform: translateY(-50%);
   cursor: w-resize;
 }
+
+/* 添加尺寸输入框样式 */
+.size-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px;
+}
+
+.size-input-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.size-label {
+  min-width: 42px;
+  color: #606266;
+  font-size: 14px;
+}
+
+:deep(.el-input-group__append) {
+  padding: 0 8px;
+}
+
+:deep(.el-input__inner) {
+  text-align: center;
+}
+
+/* 修改尺寸面板样式 */
+.size-panel {
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.panel-title {
+  padding: 12px 16px;
+  font-size: 14px;
+  color: #333;
+  font-weight: 500;
+  border-bottom: 1px solid #eee;
+}
+
+.size-inputs {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.size-input-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.size-label {
+  min-width: 42px;
+  color: #606266;
+  font-size: 14px;
+}
+
+:deep(.el-input-group__append) {
+  padding: 0 8px;
+}
+
+:deep(.el-input__inner) {
+  text-align: center;
+}
+
+/* 移除不需要的叠面板相关样式 */
 </style>
