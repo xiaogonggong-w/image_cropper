@@ -1149,7 +1149,7 @@ onUnmounted(() => {
 
       <!-- 旋转控制面板 -->
       <div class="size-panel">
-        <div class="panel-title">转控制</div>
+        <div class="panel-title">旋转控制</div>
         <div class="size-inputs">
           <div class="size-input-group">
             <span class="size-label">角度</span>
@@ -1938,9 +1938,7 @@ onUnmounted(() => {
   border-radius: 4px;
 }
 
-:deep(.el-button:hover) {
-  background-color: #f5f5f5;
-}
+
 
 :deep(.el-button.is-text) {
   padding: 8px;
