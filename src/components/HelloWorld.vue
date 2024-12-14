@@ -151,7 +151,7 @@ const initCanvas = (image) => {
 // 添加图片位置状态
 const imagePosition = ref({ x: 0, y: 0, width: 0, height: 0 })
 
-// 修改 drawImage 方法，添加一个参数来控制是否需要重绘水印
+// 修改 drawImage 方法
 const drawImage = (image, skipWatermark = false) => {
   const canvas = canvasRef.value
   const ctx = canvas.getContext('2d')
@@ -187,9 +187,69 @@ const drawImage = (image, skipWatermark = false) => {
     scaledHeight
   )
   
-  // 如果有水印文本且不跳过水印重绘，则绘制水印
+  // 如果有水印且不是跳过水印的调用，则绘制水印
   if (watermarkText.value && !skipWatermark) {
-    updateWatermark()
+    drawWatermark()
+  }
+}
+
+// 分离水印绘制为独立方法
+const drawWatermark = () => {
+  if (!canvasRef.value || !watermarkText.value) return
+  
+  const ctx = canvasRef.value.getContext('2d')
+  
+  // 设置水印样式
+  ctx.font = `${watermarkSize.value}px Arial`
+  
+  // 处理颜色和透明度
+  const opacity = watermarkOpacity.value / 100
+  if (watermarkColor.value.startsWith('#')) {
+    const r = parseInt(watermarkColor.value.slice(1, 3), 16)
+    const g = parseInt(watermarkColor.value.slice(3, 5), 16)
+    const b = parseInt(watermarkColor.value.slice(5, 7), 16)
+    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${opacity})`
+  } else {
+    ctx.fillStyle = watermarkColor.value.replace(/[\d.]+\)$/, `${opacity})`)
+  }
+  
+  if (watermarkMode.value === 'single') {
+    // 单个水印
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(
+      watermarkText.value,
+      watermarkPosition.value.x,
+      watermarkPosition.value.y
+    )
+  } else {
+    // 满屏水印
+    ctx.save()
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'top'
+    
+    const textWidth = ctx.measureText(watermarkText.value).width
+    const gap = textWidth + 50
+    
+    ctx.translate(canvasRef.value.width / 2, canvasRef.value.height / 2)
+    ctx.rotate(-30 * Math.PI / 180)
+    ctx.translate(-canvasRef.value.width / 2, -canvasRef.value.height / 2)
+    
+    for (let y = -canvasRef.value.height; y < canvasRef.value.height * 2; y += gap) {
+      for (let x = -canvasRef.value.width; x < canvasRef.value.width * 2; x += gap) {
+        ctx.fillText(watermarkText.value, x, y)
+      }
+    }
+    ctx.restore()
+  }
+}
+
+// 修改更新水印方法
+const updateWatermark = () => {
+  // 重绘图片和水印
+  if (originalImage.value) {
+    drawImage(originalImage.value, true)
+    drawWatermark()
   }
 }
 
@@ -549,7 +609,7 @@ const handleScale = (value) => {
   // 清空画布
   ctx.clearRect(0, 0, canvas.width, canvas.height)
   
-  // 计算基础放比例
+  // 计算基础缩放比例
   const baseScale = Math.min(
     canvas.width / originalImage.value.width,
     canvas.height / originalImage.value.height
@@ -873,135 +933,37 @@ const watermarkPosition = ref({
 
 // 修改水印位置处理方法
 const handleWatermarkPosition = (position) => {
-  if (!canvasRef.value || !cropArea.value) return
+  if (!canvasRef.value) return
   
+  const canvas = canvasRef.value
+  const textWidth = canvas.getContext('2d').measureText(watermarkText.value).width
   const padding = 20 // 边距
   
   switch (position) {
     case 'left-top':
-      watermarkPosition.value = {
-        x: cropArea.value.x + padding,
-        y: cropArea.value.y + padding
-      }
+      watermarkPosition.value = { x: padding, y: watermarkSize.value + padding }
       break
     case 'center-top':
-      watermarkPosition.value = {
-        x: cropArea.value.x + cropArea.value.width / 2,
-        y: cropArea.value.y + padding
-      }
+      watermarkPosition.value = { x: canvas.width / 2, y: watermarkSize.value + padding }
       break
     case 'right-top':
-      watermarkPosition.value = {
-        x: cropArea.value.x + cropArea.value.width - padding,
-        y: cropArea.value.y + padding
-      }
+      watermarkPosition.value = { x: canvas.width - padding, y: watermarkSize.value + padding }
       break
     case 'center':
-      watermarkPosition.value = {
-        x: cropArea.value.x + cropArea.value.width / 2,
-        y: cropArea.value.y + cropArea.value.height / 2
-      }
+      watermarkPosition.value = { x: canvas.width / 2, y: canvas.height / 2 }
       break
     case 'left-bottom':
-      watermarkPosition.value = {
-        x: cropArea.value.x + padding,
-        y: cropArea.value.y + cropArea.value.height - padding
-      }
+      watermarkPosition.value = { x: padding, y: canvas.height - padding }
       break
     case 'center-bottom':
-      watermarkPosition.value = {
-        x: cropArea.value.x + cropArea.value.width / 2,
-        y: cropArea.value.y + cropArea.value.height - padding
-      }
+      watermarkPosition.value = { x: canvas.width / 2, y: canvas.height - padding }
       break
     case 'right-bottom':
-      watermarkPosition.value = {
-        x: cropArea.value.x + cropArea.value.width - padding,
-        y: cropArea.value.y + cropArea.value.height - padding
-      }
+      watermarkPosition.value = { x: canvas.width - padding, y: canvas.height - padding }
       break
   }
   
   updateWatermark()
-}
-
-// 修改更新水印方法
-const updateWatermark = () => {
-  if (!canvasRef.value || !originalImage.value || !watermarkText.value || !cropArea.value) return
-  
-  const ctx = canvasRef.value.getContext('2d')
-  const canvas = canvasRef.value
-  
-  // 先重绘原图
-  drawImage(originalImage.value, true)
-  
-  // 设置水印样式
-  ctx.font = `${watermarkSize.value}px Arial`
-  
-  // 处理颜色和透明度
-  const color = watermarkColor.value
-  const alpha = watermarkOpacity.value / 100
-  
-  if (color.startsWith('#')) {
-    const r = parseInt(color.slice(1, 3), 16)
-    const g = parseInt(color.slice(3, 5), 16)
-    const b = parseInt(color.slice(5, 7), 16)
-    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`
-  } else {
-    ctx.fillStyle = color.replace(/[\d.]+\)$/, `${alpha})`)
-  }
-  
-  // 保存当前状态
-  ctx.save()
-  
-  // 设置裁剪区域为裁剪框大小
-  ctx.beginPath()
-  ctx.rect(cropArea.value.x, cropArea.value.y, cropArea.value.width, cropArea.value.height)
-  ctx.clip()
-  
-  if (watermarkMode.value === 'single') {
-    // 单个水印 - 相对于裁剪框定位
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    
-    // 计算水印在裁剪框内的位置
-    const x = cropArea.value.x + watermarkPosition.value.x * cropArea.value.width / canvas.width
-    const y = cropArea.value.y + watermarkPosition.value.y * cropArea.value.height / canvas.height
-    
-    ctx.fillText(watermarkText.value, x, y)
-  } else {
-    // 满屏水印 - 在裁剪框内重复绘制
-    ctx.textAlign = 'left'
-    ctx.textBaseline = 'top'
-    
-    // 计算水印间距
-    const textWidth = ctx.measureText(watermarkText.value).width
-    const gap = textWidth + 50
-    
-    // 设置旋转中心点为裁剪框中心
-    const centerX = cropArea.value.x + cropArea.value.width / 2
-    const centerY = cropArea.value.y + cropArea.value.height / 2
-    
-    ctx.translate(centerX, centerY)
-    ctx.rotate(-30 * Math.PI / 180)
-    ctx.translate(-centerX, -centerY)
-    
-    // 计算需要绘制的范围
-    const startX = cropArea.value.x - gap
-    const startY = cropArea.value.y - gap
-    const endX = cropArea.value.x + cropArea.value.width + gap
-    const endY = cropArea.value.y + cropArea.value.height + gap
-    
-    // 绘制水印网格
-    for (let y = startY; y < endY; y += gap) {
-      for (let x = startX; x < endX; x += gap) {
-        ctx.fillText(watermarkText.value, x, y)
-      }
-    }
-  }
-  
-  // 恢复状态
-  ctx.restore()
 }
 
 </script>
@@ -1042,7 +1004,7 @@ const updateWatermark = () => {
 
       <!-- 旋转控制面板 -->
       <div class="size-panel">
-        <div class="panel-title">���转控制</div>
+        <div class="panel-title">旋转控制</div>
         <div class="size-inputs">
           <div class="size-input-group">
             <span class="size-label">角度</span>
@@ -1149,7 +1111,7 @@ const updateWatermark = () => {
             />
           </div>
           
-          <!-- 印模式 -->
+          <!-- 水印模式 -->
           <div class="size-input-group">
             <span class="size-label">模式</span>
             <el-radio-group v-model="watermarkMode" @change="updateWatermark">
@@ -1540,7 +1502,7 @@ const updateWatermark = () => {
   background-color: #45a049;
 }
 
-/* 应式设计 */
+/* ���式设计 */
 @media (max-width: 768px) {
   .container {
     flex-direction: column;
@@ -1951,7 +1913,7 @@ const updateWatermark = () => {
   background: transparent;
 }
 
-/* 修改工具栏���式 */
+/* 修改工具栏样式 */
 .tool-item.active {
   background: #e3f2fd;
   border: 2px solid #1976d2;
