@@ -146,6 +146,9 @@ const initCanvas = (image) => {
   
   // 更新裁剪框位置
   updateCropBoxPosition()
+  
+  // 初始化水印位置
+  initWatermarkPosition()
 }
 
 // 添加图片位置状态
@@ -195,9 +198,18 @@ const drawImage = (image, skipWatermark = false) => {
 
 // 分离水印绘制为独立方法
 const drawWatermark = () => {
-  if (!canvasRef.value || !watermarkText.value) return
+  if (!canvasRef.value || !watermarkText.value || !cropArea.value) return
   
   const ctx = canvasRef.value.getContext('2d')
+  const area = cropArea.value
+  
+  // 保存当前状态
+  ctx.save()
+  
+  // 设置裁剪区域为裁剪框大小
+  ctx.beginPath()
+  ctx.rect(area.x, area.y, area.width, area.height)
+  ctx.clip()
   
   // 设置水印样式
   ctx.font = `${watermarkSize.value}px Arial`
@@ -224,24 +236,36 @@ const drawWatermark = () => {
     )
   } else {
     // 满屏水印
-    ctx.save()
     ctx.textAlign = 'left'
     ctx.textBaseline = 'top'
     
     const textWidth = ctx.measureText(watermarkText.value).width
     const gap = textWidth + 50
     
-    ctx.translate(canvasRef.value.width / 2, canvasRef.value.height / 2)
-    ctx.rotate(-30 * Math.PI / 180)
-    ctx.translate(-canvasRef.value.width / 2, -canvasRef.value.height / 2)
+    // 设置旋转中心点为裁剪框中心
+    const centerX = area.x + area.width / 2
+    const centerY = area.y + area.height / 2
     
-    for (let y = -canvasRef.value.height; y < canvasRef.value.height * 2; y += gap) {
-      for (let x = -canvasRef.value.width; x < canvasRef.value.width * 2; x += gap) {
+    ctx.translate(centerX, centerY)
+    ctx.rotate(-30 * Math.PI / 180)
+    ctx.translate(-centerX, -centerY)
+    
+    // 计算需要绘制的范围
+    const startX = area.x - gap
+    const startY = area.y - gap
+    const endX = area.x + area.width + gap
+    const endY = area.y + area.height + gap
+    
+    // 绘制水印网格
+    for (let y = startY; y < endY; y += gap) {
+      for (let x = startX; x < endX; x += gap) {
         ctx.fillText(watermarkText.value, x, y)
       }
     }
-    ctx.restore()
   }
+  
+  // 恢复状态
+  ctx.restore()
 }
 
 // 修改更新水印方法
@@ -933,37 +957,68 @@ const watermarkPosition = ref({
 
 // 修改水印位置处理方法
 const handleWatermarkPosition = (position) => {
-  if (!canvasRef.value) return
+  if (!cropArea.value) return
   
-  const canvas = canvasRef.value
-  const textWidth = canvas.getContext('2d').measureText(watermarkText.value).width
-  const padding = 20 // 边距
+  const area = cropArea.value
+  const padding = watermarkSize.value // 使用文字大小作为边距
   
   switch (position) {
     case 'left-top':
-      watermarkPosition.value = { x: padding, y: watermarkSize.value + padding }
+      watermarkPosition.value = {
+        x: area.x + padding,
+        y: area.y + padding
+      }
       break
     case 'center-top':
-      watermarkPosition.value = { x: canvas.width / 2, y: watermarkSize.value + padding }
+      watermarkPosition.value = {
+        x: area.x + area.width / 2,
+        y: area.y + padding
+      }
       break
     case 'right-top':
-      watermarkPosition.value = { x: canvas.width - padding, y: watermarkSize.value + padding }
+      watermarkPosition.value = {
+        x: area.x + area.width - padding,
+        y: area.y + padding
+      }
       break
     case 'center':
-      watermarkPosition.value = { x: canvas.width / 2, y: canvas.height / 2 }
+      watermarkPosition.value = {
+        x: area.x + area.width / 2,
+        y: area.y + area.height / 2
+      }
       break
     case 'left-bottom':
-      watermarkPosition.value = { x: padding, y: canvas.height - padding }
+      watermarkPosition.value = {
+        x: area.x + padding,
+        y: area.y + area.height - padding
+      }
       break
     case 'center-bottom':
-      watermarkPosition.value = { x: canvas.width / 2, y: canvas.height - padding }
+      watermarkPosition.value = {
+        x: area.x + area.width / 2,
+        y: area.y + area.height - padding
+      }
       break
     case 'right-bottom':
-      watermarkPosition.value = { x: canvas.width - padding, y: canvas.height - padding }
+      watermarkPosition.value = {
+        x: area.x + area.width - padding,
+        y: area.y + area.height - padding
+      }
       break
   }
   
   updateWatermark()
+}
+
+// 添加水印默认位置初始化
+const initWatermarkPosition = () => {
+  if (!cropArea.value) return
+  
+  // 设置水印位置为裁剪框中心
+  watermarkPosition.value = {
+    x: cropArea.value.x + cropArea.value.width / 2,
+    y: cropArea.value.y + cropArea.value.height / 2
+  }
 }
 
 </script>
@@ -1004,7 +1059,7 @@ const handleWatermarkPosition = (position) => {
 
       <!-- 旋转控制面板 -->
       <div class="size-panel">
-        <div class="panel-title">旋转控制</div>
+        <div class="panel-title">���转控制</div>
         <div class="size-inputs">
           <div class="size-input-group">
             <span class="size-label">角度</span>
@@ -1963,7 +2018,7 @@ const handleWatermarkPosition = (position) => {
   cursor: crosshair;
 }
 
-/* 剪框样式 */
+/* 剪框���式 */
 .crop-box {
   position: absolute;
   border: 2px solid #fff;
@@ -2046,7 +2101,7 @@ const handleWatermarkPosition = (position) => {
   cursor: w-resize;
 }
 
-/* 添加尺寸输入框样式 */
+/* 添加尺寸输入��样式 */
 .size-inputs {
   display: flex;
   flex-direction: column;
