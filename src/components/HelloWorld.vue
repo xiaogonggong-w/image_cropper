@@ -1,8 +1,8 @@
 <script setup>
-import { ref, onMounted, nextTick, computed } from 'vue'
+import { ref, onMounted, nextTick, computed, onUnmounted } from 'vue'
 import { ElCollapse, ElCollapseItem, ElButton, ElInput,ElTooltip,ElColorPicker,ElSlider,ElScrollbar,ElRadioGroup, ElRadio } from 'element-plus'
 import 'element-plus/dist/index.css'
-import { Camera, Edit } from '@element-plus/icons-vue'
+import { Camera, Edit, ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
 const imgUrl = ref('')
 const canvasRef = ref(null)
 const cropBoxRef = ref(null)
@@ -17,6 +17,9 @@ const cropArea = ref({
   isDragging: false,
   isResizing: false
 })
+
+// 撤销恢复的历史状态
+const redoHistory = ref([])
 
 // 添加 editor-container 的引用
 const containerRef = ref(null)
@@ -306,7 +309,7 @@ const handleCropBoxMouseDown = (e) => {
     const newY = e.clientY - startY
     const canvas = canvasRef.value
     
-    // 限制在画布范围内
+    // 制在画布范围内
     cropArea.value.x = Math.min(canvas.width - cropArea.value.width, Math.max(0, newX))
     cropArea.value.y = Math.min(canvas.height - cropArea.value.height, Math.max(0, newY))
     
@@ -428,7 +431,7 @@ const handleMouseUp = () => {
   canvasRef.value.style.cursor = 'crosshair'
 }
 
-// 确认裁剪
+// 确认���剪
 const confirmCrop = () => {
   const canvas = document.createElement('canvas')
   const ctx = canvas.getContext('2d')
@@ -761,7 +764,10 @@ const isPointInCropArea = (x, y) => {
 // 修改马赛克绘制方法
 const drawMosaic = (x, y) => {
   if (!isPointInCropArea(x, y)) return
-  
+  // 在绘制前保存当前状态
+  if (!lastPos.value.x && !lastPos.value.y) {
+    saveDrawState()
+  }
   const ctx = canvasRef.value.getContext('2d')
   const size = 10 // 马赛克块大小
   
@@ -775,7 +781,7 @@ const drawMosaic = (x, y) => {
     const gridX = Math.floor(point.x / size) * size
     const gridY = Math.floor(point.y / size) * size
     
-    // 获取区域的平均颜色
+    // 获取区域的平��颜色
     const imageData = ctx.getImageData(gridX, gridY, size, size)
     const color = getAverageColor(imageData.data)
     
@@ -795,7 +801,8 @@ const handleCanvasMouseDown = (e) => {
   
   // 检查起始点是否在裁剪框内
   if (!isPointInCropArea(x, y)) return
-  
+  // 开始绘制前保存状态
+  saveDrawState()
   isDrawing.value = true
   lastPos.value = { x, y }
   
@@ -1021,6 +1028,89 @@ const initWatermarkPosition = () => {
   }
 }
 
+// 添加历史记录状态
+const drawHistory = ref([])
+const maxHistoryLength = 20 // 限制历史记录数量
+
+// 添加保存历史记录的方法
+const saveDrawState = () => {
+  if (!canvasRef.value) return
+  
+  // 保存当前画布状态
+  const state = canvasRef.value.toDataURL()
+  drawHistory.value.push(state)
+  
+  // 清空恢复历史
+  redoHistory.value = []
+  
+  // 限制历史记录数量
+  if (drawHistory.value.length > maxHistoryLength) {
+    drawHistory.value.shift()
+  }
+}
+
+// 修改撤销方法
+const undoDraw = () => {
+  if (!drawHistory.value.length || !canvasRef.value) return
+  
+  // 获取当前状态并保存到恢复历史
+  const currentState = canvasRef.value.toDataURL()
+  redoHistory.value.push(currentState)
+  
+  // 获取上一个状态
+  const previousState = drawHistory.value.pop()
+  const img = new Image()
+  
+  img.onload = () => {
+    const ctx = canvasRef.value.getContext('2d')
+    ctx.clearRect(0, 0, canvasRef.value.width, canvasRef.value.height)
+    ctx.drawImage(img, 0, 0)
+  }
+  
+  img.src = previousState
+}
+
+// 添加恢复方法
+const redoDraw = () => {
+  if (!redoHistory.value.length || !canvasRef.value) return
+  
+  // 获取当前状态并保存到撤销历史
+  const currentState = canvasRef.value.toDataURL()
+  drawHistory.value.push(currentState)
+  
+  // 获取下一个状态
+  const nextState = redoHistory.value.pop()
+  const img = new Image()
+  
+  img.onload = () => {
+    const ctx = canvasRef.value.getContext('2d')
+    ctx.clearRect(0, 0, canvasRef.value.width, canvasRef.value.height)
+    ctx.drawImage(img, 0, 0)
+  }
+  
+  img.src = nextState
+}
+
+// 修改键盘快捷键支持
+onMounted(() => {
+  window.addEventListener('keydown', (e) => {
+    // Ctrl+Z 撤销
+    if (e.ctrlKey && !e.shiftKey && e.key === 'z') {
+      e.preventDefault()
+      undoDraw()
+    }
+    // Ctrl+Shift+Z 或 Ctrl+Y 恢复
+    if ((e.ctrlKey && e.shiftKey && e.key === 'z') || (e.ctrlKey && e.key === 'y')) {
+      e.preventDefault()
+      redoDraw()
+    }
+  })
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeyDown)
+})
+
 </script>
 
 <template>
@@ -1059,7 +1149,7 @@ const initWatermarkPosition = () => {
 
       <!-- 旋转控制面板 -->
       <div class="size-panel">
-        <div class="panel-title">���转控制</div>
+        <div class="panel-title">转控制</div>
         <div class="size-inputs">
           <div class="size-input-group">
             <span class="size-label">角度</span>
@@ -1383,6 +1473,26 @@ const initWatermarkPosition = () => {
             <Edit style="width: 1em; height: 1em;" />
           </div>
         </el-tooltip>
+        
+        <el-tooltip content="撤销" placement="top">
+          <div 
+            class="tool-item"
+            :class="{ disabled: !drawHistory.length }"
+            @click="drawHistory.length && undoDraw()"
+          >
+            <ArrowLeft style="width: 1em; height: 1em;" />
+          </div>
+        </el-tooltip>
+        
+        <el-tooltip content="恢复" placement="top">
+          <div 
+            class="tool-item"
+            :class="{ disabled: !redoHistory.length }"
+            @click="redoHistory.length && redoDraw()"
+          >
+            <ArrowRight style="width: 1em; height: 1em;" />
+          </div>
+        </el-tooltip>
       </div>
     </div>
   </div>
@@ -1557,70 +1667,14 @@ const initWatermarkPosition = () => {
   background-color: #45a049;
 }
 
-/* ���式设计 */
-@media (max-width: 768px) {
-  .container {
-    flex-direction: column;
-    height: 100%;
-    overflow-y: auto;
-  }
-
-  .tools-panel {
-    width: 100%;
-    position: sticky;
-    top: 0;
-    z-index: 100;
-  }
-
-  .content-panel {
-    height: auto;
-    min-height: calc(100vh - 200px);
-  }
+/* 添加禁用状态样式 */
+.tool-item.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
-/* 添加响应式样式 */
-@media (max-width: 480px) {
-  .upload-text h3 {
-    font-size: 1.2em;
-  }
-  
-  .upload-text p {
-    font-size: 0.9em;
-  }
-  
-  .upload-hint {
-    font-size: 0.8em;
-  }
-}
-
-.action-buttons {
-  margin-top: auto;
-  padding-top: 16px;
-  border-top: 1px solid #ddd;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-/* 响应式调整 */
-@media (max-width: 768px) {
-  .container {
-    flex-direction: column;
-    height: 100%;
-    overflow-y: auto;
-  }
-
-  .tools-panel {
-    width: 100%;
-    position: sticky;
-    top: 0;
-    z-index: 100;
-  }
-
-  .content-panel {
-    height: auto;
-    min-height: calc(100vh - 200px);
-  }
+.tool-item.disabled:hover {
+  background: #f5f5f5;
 }
 
 /* 添加一些新的样式 */
@@ -1925,16 +1979,17 @@ const initWatermarkPosition = () => {
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s;
-  background: white;
+  background: #f5f5f5;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .tool-item:hover {
-  background: #f5f5f5;
+  background: #e3f2fd;
 }
 
 .tool-item.active {
   background: #e3f2fd;
+  border: 2px solid #1976d2;
 }
 
 .tool-icon {
@@ -2018,7 +2073,7 @@ const initWatermarkPosition = () => {
   cursor: crosshair;
 }
 
-/* 剪框���式 */
+/* 剪框式 */
 .crop-box {
   position: absolute;
   border: 2px solid #fff;
@@ -2101,7 +2156,7 @@ const initWatermarkPosition = () => {
   cursor: w-resize;
 }
 
-/* 添加尺寸输入��样式 */
+/* 添加尺寸输入框样式 */
 .size-inputs {
   display: flex;
   flex-direction: column;
@@ -2209,7 +2264,7 @@ const initWatermarkPosition = () => {
   font-size: 12px;
 }
 
-/* 修改编辑区域布局 */
+/* 修改编辑区域布��� */
 .editor-wrapper {
   display: none;
 }
