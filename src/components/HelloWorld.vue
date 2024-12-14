@@ -27,6 +27,59 @@ const sizeInputs = computed(() => ({
   height: cropArea.value?.height?.toFixed(0) || ''
 }))
 
+// 添加旋转角度状态
+const rotateAngle = ref(0)
+
+// 添加旋转处理方法
+const handleRotate = (value) => {
+  if (!cropArea.value || !canvasRef.value) return
+  
+  // 如果是点击按钮传入的值，直接加到当前角度上
+  if (typeof value === 'number') {
+    rotateAngle.value = ((rotateAngle.value + value) % 360 + 360) % 360
+  } else {
+    // 如果是输入框输入的值，直接设置角度
+    const angle = parseInt(value)
+    if (isNaN(angle)) return
+    rotateAngle.value = ((angle % 360) + 360) % 360
+  }
+  
+  // 获取画布上下文
+  const ctx = canvasRef.value.getContext('2d')
+  const canvas = canvasRef.value
+  
+  // 清空画布
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  
+  // 保存当前状态
+  ctx.save()
+  
+  // 移动到画布中心
+  ctx.translate(canvas.width / 2, canvas.height / 2)
+  
+  // 旋转
+  ctx.rotate((rotateAngle.value * Math.PI) / 180)
+  
+  // 绘制图片
+  if (originalImage.value) {
+    const scale = Math.min(
+      canvas.width / originalImage.value.width,
+      canvas.height / originalImage.value.height
+    )
+    
+    ctx.drawImage(
+      originalImage.value,
+      -originalImage.value.width * scale / 2,
+      -originalImage.value.height * scale / 2,
+      originalImage.value.width * scale,
+      originalImage.value.height * scale
+    )
+  }
+  
+  // 恢复状态
+  ctx.restore()
+}
+
 // 监听 canvas 挂载
 onMounted(() => {
   if (originalImage.value) {
@@ -180,7 +233,7 @@ const handleMouseDown = (e) => {
   const area = cropArea.value
   const handleSize = 8
 
-  // 检查是否点击在控制点上
+  // 检查是否点击在制点上
   const handles = [
     { x: area.x, y: area.y, cursor: 'nw-resize' },
     { x: area.x + area.width / 2, y: area.y, cursor: 'n-resize' },
@@ -470,6 +523,30 @@ const handleSizeChange = (type, value) => {
             >
               <template #append>px</template>
             </el-input>
+          </div>
+        </div>
+      </div>
+
+      <!-- 旋转控制面板 -->
+      <div class="size-panel">
+        <div class="panel-title">旋转控制</div>
+        <div class="size-inputs">
+          <div class="size-input-group">
+            <span class="size-label">角度</span>
+            <el-input
+              v-model.number="rotateAngle"
+              type="number"
+              :min="-360"
+              :max="360"
+              @input="handleRotate"
+            >
+              <template #append>°</template>
+            </el-input>
+          </div>
+          <!-- 快捷旋转按钮 -->
+          <div class="rotate-buttons">
+            <el-button @click="handleRotate(-90)">左转90°</el-button>
+            <el-button @click="handleRotate(90)">右转90°</el-button>
           </div>
         </div>
       </div>
@@ -1042,7 +1119,7 @@ const handleSizeChange = (type, value) => {
   width: 100%;
 }
 
-/* 操作按钮样式优��� */
+/* 操作按钮样式优 */
 :deep(.action-buttons .el-button) {
   flex: 1;
   justify-content: center;
@@ -1358,5 +1435,18 @@ const handleSizeChange = (type, value) => {
   text-align: center;
 }
 
-/* 移除不需要的叠面板相关样式 */
+/* 添加旋转按钮样式 */
+.rotate-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.rotate-buttons .el-button {
+  flex: 1;
+}
+
+/* 确保输入框和按钮样式统一 */
+:deep(.el-input-number) {
+  width: 100%;
+}
 </style>
