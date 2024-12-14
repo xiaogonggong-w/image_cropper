@@ -330,7 +330,7 @@ const handleMouseMove = (e) => {
     area.y = Math.max(0, Math.min(canvas.height - area.height, area.y + movementY))
   }
 
-  // 重绘制
+  // 重���制
   if (area.isResizing || area.isDragging) {
     drawImage(originalImage.value)
     drawCropArea()
@@ -845,6 +845,25 @@ const watermarkSize = ref(24)
 const watermarkColor = ref('#000000')
 const watermarkOpacity = ref(50)
 
+// 添加预定义颜色
+const predefineColors = [
+  '#ff4500',
+  '#ff8c00',
+  '#ffd700',
+  '#90ee90',
+  '#00ced1',
+  '#1e90ff',
+  '#c71585',
+  '#000000',
+  '#ffffff'
+]
+
+// 修改水印颜色处理方法
+const handleWatermarkColorChange = (color) => {
+  watermarkColor.value = color
+  updateWatermark()
+}
+
 // 修改更新水印方法
 const updateWatermark = () => {
   if (!canvasRef.value || !originalImage.value) return
@@ -877,7 +896,18 @@ const updateWatermark = () => {
   if (watermarkText.value) {
     // 设置水印样式
     ctx.font = `${watermarkSize.value}px Arial`
-    ctx.fillStyle = `${watermarkColor.value}${Math.round(watermarkOpacity.value * 2.55).toString(16).padStart(2, '0')}`
+    
+    // 处理颜色和透明度
+    if (watermarkColor.value.startsWith('#')) {
+      // 如果是十六进制颜色
+      const opacity = Math.round(watermarkOpacity.value * 2.55).toString(16).padStart(2, '0')
+      ctx.fillStyle = `${watermarkColor.value}${opacity}`
+    } else {
+      // 如果是 rgba 颜色
+      const opacity = watermarkOpacity.value / 100
+      ctx.fillStyle = watermarkColor.value.replace(/[\d.]+\)$/, `${opacity})`)
+    }
+    
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     
@@ -1052,19 +1082,9 @@ const updateWatermark = () => {
             <span class="size-label">颜色</span>
             <el-color-picker
               v-model="watermarkColor"
-              :predefine="[
-                '#ff4500',
-                '#ff8c00',
-                '#ffd700',
-                '#90ee90',
-                '#00ced1',
-                '#1e90ff',
-                '#c71585',
-                '#000000',
-                '#ffffff'
-              ]"
+              :predefine="predefineColors"
               show-alpha
-              @change="updateWatermark"
+              @change="handleWatermarkColorChange"
             />
           </div>
           
@@ -2052,7 +2072,7 @@ const updateWatermark = () => {
   border-radius: 8px;
   display: flex;
   align-items: center;
-  gap: 12px; /* 增加工具之间的间距 */
+  gap: 12px; /* 增加工���之间的间距 */
 }
 
 .tool-item {
@@ -2083,7 +2103,6 @@ const updateWatermark = () => {
 
 .color-picker-group :deep(.el-color-picker) {
   width: 100%;
-  height: 32px;
 }
 
 .color-picker-group :deep(.el-color-picker__trigger) {
@@ -2098,17 +2117,8 @@ const updateWatermark = () => {
   border: none;
 }
 
-.color-picker-group :deep(.el-color-picker__empty) {
-  display: none;
-}
-
-/* 调整颜色面板位置 */
-.color-picker-group :deep(.el-color-picker__panel) {
-  left: 0 !important;
-}
-
-/* 确保颜色选择器下拉面板在其他元素之上 */
+/* 确保颜色面板显示在正确位置 */
 :deep(.el-color-picker__panel) {
-  z-index: 3000;
+  position: fixed !important;
 }
 </style>
