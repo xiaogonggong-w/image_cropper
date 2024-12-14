@@ -202,6 +202,8 @@ const updateCropBoxPosition = () => {
 
 // 修改裁剪框拖动处理
 const handleCropBoxMouseDown = (e) => {
+  if (currentTool.value === 'mosaic') return // 马赛克模式下禁止拖动裁剪框
+  
   e.preventDefault()
   cropArea.value.isDragging = true
   
@@ -284,7 +286,7 @@ const handleMouseDown = (e) => {
     }
   }
 
-  // 如果不是点击在制点上，检查是否点击在裁剪框内
+  // 如果不是点击在制点上，检查是否点击在裁剪框上
   if (
     offsetX >= area.x &&
     offsetX <= area.x + area.width &&
@@ -623,6 +625,136 @@ const handleQuickPosition = (position) => {
   
   updateCropBoxPosition()
 }
+
+// 添加工具相关状态
+const currentTool = ref(null)
+const isDrawing = ref(false)
+const lastPos = ref({ x: 0, y: 0 })
+
+// 切换工具
+const toggleTool = (tool) => {
+  if (currentTool.value === tool) {
+    currentTool.value = null
+    canvasRef.value.style.cursor = 'default'
+    cropBoxRef.value.style.pointerEvents = 'auto' // 恢复裁剪框交互
+  } else {
+    currentTool.value = tool
+    if (tool === 'mosaic') {
+      canvasRef.value.style.cursor = 'crosshair'
+      cropBoxRef.value.style.pointerEvents = 'none' // 禁用裁剪框交互
+    }
+  }
+}
+
+// 修改马赛克绘制处理
+const handleCanvasMouseDown = (e) => {
+  if (currentTool.value !== 'mosaic') return
+  
+  isDrawing.value = true
+  const rect = canvasRef.value.getBoundingClientRect()
+  lastPos.value = {
+    x: e.clientX - rect.left,
+    y: e.clientY - rect.top
+  }
+  
+  // 立即开始绘制第一个马赛克块
+  drawMosaic(lastPos.value.x, lastPos.value.y)
+}
+
+const handleCanvasMouseMove = (e) => {
+  if (!isDrawing.value || currentTool.value !== 'mosaic') return
+  
+  const rect = canvasRef.value.getBoundingClientRect()
+  const x = e.clientX - rect.left
+  const y = e.clientY - rect.top
+  
+  drawMosaic(x, y)
+  lastPos.value = { x, y }
+}
+
+const handleCanvasMouseUp = () => {
+  isDrawing.value = false
+}
+
+// 修改绘制马赛克方法
+const drawMosaic = (x, y) => {
+  const ctx = canvasRef.value.getContext('2d')
+  const size = 10 // 马赛克块大小
+  
+  // 获取起点和终点之间的所有点
+  const points = getLinePoints(lastPos.value.x, lastPos.value.y, x, y)
+  
+  points.forEach(point => {
+    // 对齐到网格
+    const gridX = Math.floor(point.x / size) * size
+    const gridY = Math.floor(point.y / size) * size
+    
+    // 获取区域的平均颜色
+    const imageData = ctx.getImageData(gridX, gridY, size, size)
+    const color = getAverageColor(imageData.data)
+    
+    // 填充马赛克块
+    ctx.fillStyle = `rgb(${color.r}, ${color.g}, ${color.b})`
+    ctx.fillRect(gridX, gridY, size, size)
+  })
+}
+
+// 获取两点之间的所有点
+const getLinePoints = (x1, y1, x2, y2) => {
+  const points = []
+  const dx = Math.abs(x2 - x1)
+  const dy = Math.abs(y2 - y1)
+  const sx = x1 < x2 ? 1 : -1
+  const sy = y1 < y2 ? 1 : -1
+  let err = dx - dy
+  
+  let x = x1
+  let y = y1
+  
+  while (true) {
+    points.push({ x, y })
+    if (x === x2 && y === y2) break
+    const e2 = 2 * err
+    if (e2 > -dy) {
+      err -= dy
+      x += sx
+    }
+    if (e2 < dx) {
+      err += dx
+      y += sy
+    }
+  }
+  
+  return points
+}
+
+// 获取区域平均颜色
+const getAverageColor = (data) => {
+  let r = 0, g = 0, b = 0
+  const count = data.length / 4
+  
+  for (let i = 0; i < data.length; i += 4) {
+    r += data[i]
+    g += data[i + 1]
+    b += data[i + 2]
+  }
+  
+  return {
+    r: Math.round(r / count),
+    g: Math.round(g / count),
+    b: Math.round(b / count)
+  }
+}
+
+// 添加画布事件监听
+onMounted(() => {
+  if (canvasRef.value) {
+    canvasRef.value.addEventListener('mousedown', handleCanvasMouseDown)
+    canvasRef.value.addEventListener('mousemove', handleCanvasMouseMove)
+    canvasRef.value.addEventListener('mouseup', handleCanvasMouseUp)
+    canvasRef.value.addEventListener('mouseleave', handleCanvasMouseUp)
+  }
+})
 </script>
 
 <template>
@@ -798,7 +930,7 @@ const handleQuickPosition = (position) => {
               </svg>
             </div>
             <div class="upload-text">
-              <h3>上传图��</h3>
+              <h3>上传图片</h3>
               <p>点击选择或拖拽图到此处</p>
               <span class="upload-hint">持 JPG、PNG、GIF 等格式</span>
             </div>
@@ -809,6 +941,11 @@ const handleQuickPosition = (position) => {
           <canvas
             ref="canvasRef"
             class="editor-canvas"
+            :class="{ drawing: isDrawing }"
+            @mousedown="handleCanvasMouseDown"
+            @mousemove="handleCanvasMouseMove"
+            @mouseup="handleCanvasMouseUp"
+            @mouseleave="handleCanvasMouseUp"
           ></canvas>
           
           <!-- 裁剪框 -->
@@ -816,6 +953,7 @@ const handleQuickPosition = (position) => {
             ref="cropBoxRef"
             class="crop-box"
             @mousedown="handleCropBoxMouseDown"
+            :style="{ pointerEvents: currentTool === 'mosaic' ? 'none' : 'auto' }"
           >
             <!-- 四角的控制点 -->
             <div 
@@ -852,6 +990,19 @@ const handleQuickPosition = (position) => {
               class="resize-handle edge left"
               @mousedown="(e) => handleResizeMouseDown(e, 'left')"
             ></div>
+          </div>
+          
+          <!-- 底部工具栏 -->
+          <div class="bottom-toolbar">
+            <div 
+              class="tool-item"
+              :class="{ active: currentTool === 'mosaic' }"
+              @click="toggleTool('mosaic')"
+            >
+              <i class="tool-icon">🔲</i>
+              <span class="tool-label">马赛克</span>
+            </div>
+            <!-- 后续可以添加更多工具 -->
           </div>
         </template>
       </div>
@@ -1467,6 +1618,11 @@ const handleQuickPosition = (position) => {
   height: 100%;
   background: #f5f5f5;
   cursor: crosshair;
+  user-select: none; /* 防止拖动时选中文本 */
+}
+
+.editor-canvas.drawing {
+  cursor: none;
 }
 
 .editor-container {
@@ -1491,6 +1647,7 @@ const handleQuickPosition = (position) => {
   border: 2px solid #fff;
   box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
   cursor: move;
+  transition: pointer-events 0.2s; /* 添加过渡效果 */
 }
 
 /* 调整大的控制点 */
@@ -1673,5 +1830,65 @@ const handleQuickPosition = (position) => {
   flex: 1;
   padding: 6px;
   font-size: 12px;
+}
+
+/* 添加底部工具栏样式 */
+.bottom-toolbar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 12px;
+  background: white;
+  display: flex;
+  gap: 8px;
+  border-top: 1px solid #eee;
+}
+
+.tool-item {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  background: #f5f5f5;
+  transition: all 0.2s;
+}
+
+.tool-item:hover {
+  background: #e3f2fd;
+}
+
+.tool-item.active {
+  background: #e3f2fd;
+  border: 2px solid #1976d2;
+}
+
+.tool-icon {
+  font-size: 20px;
+}
+
+.tool-label {
+  font-size: 14px;
+  color: #333;
+}
+
+/* 修改画布样式 */
+.editor-canvas {
+  cursor: crosshair;
+  user-select: none; /* 防止拖动时选中文本 */
+}
+
+.editor-canvas.drawing {
+  cursor: none;
+}
+
+/* 修改裁剪框样式 */
+.crop-box {
+  /* ... 其他样式保持不变 ... */
+  transition: pointer-events 0.2s; /* 添加过渡效果 */
 }
 </style>
