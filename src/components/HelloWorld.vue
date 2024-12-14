@@ -1,366 +1,265 @@
 <script setup>
-import { ref, nextTick } from 'vue'
-import 'vue-cropper/dist/index.css'
-import { VueCropper } from 'vue-cropper'
-import { ElCollapse, ElCollapseItem, ElButton, ElInput, ElSlider } from 'element-plus'
+import { ref, onMounted, nextTick } from 'vue'
+import { ElCollapse, ElCollapseItem, ElButton } from 'element-plus'
 import 'element-plus/dist/index.css'
-import { fabric } from 'fabric'
 
 const imgUrl = ref('')
-const cropperRef = ref(null)
-const activeNames = ref([]) // 用于控制当前展开的面板
-
-// 添加 fabric.js 相关状态
-const fabricCanvas = ref(null)
-const isMosaicMode = ref(false)
-
-// 修改配置选项，设置默认为自由裁剪
-const cropOptions = ref({
-  // 基础配置
-  autoCrop: true,        // 是否自动生成裁剪框
-  autoCropWidth: 480,    // 裁剪框默认宽度
-  autoCropHeight: 270,   // 裁剪框默认高度
-  
-  // 裁剪框行为
-  fixed: false,          // 默认不固定比例
-  fixedNumber: [1, 1],   // 默认 1:1 比例（自由裁剪时不生效）
-  fixedBox: false,       // 不固定裁剪框大小
-  canMove: true,         
-  canMoveBox: true,      
-  centerBox: true,       
-  
-  // 高级功能
-  original: false,       // 上传图片按照原始比例渲染
-  full: true,           // 是否输出原图比例的截图
-  enlarge: 1,           // 裁剪图片输出比例
-  high: true,           // 是否照设计dpr 输出比例图片
-  maxImgSize: 3000,     // 限制图片最大宽度和高度
-  
-  // 界面设置
-  info: true,           // 裁剪框的大小信息
-  infoTrue: true,       // true 为展示真实输出图片宽高
-  outputSize: 1,        // 裁剪生成图片的质量(0.1-1)
-  outputType: 'jpeg',   // 裁剪生成图片的格式
-  
-  // 辅助功能
-  background: true,     // 是否显示背景
-  guides: true,         // 是否显示裁剪框辅助线
-  highlight: true,      // 是否高亮裁剪框
-  modal: true,          // 是否显示蒙层
-  
-  // 缩放控制
-  zoom: true,           // 图片是否可以缩放
-  zoomRate: 1.1,        // 缩放比例
-  rotatable: true,      // 是否可以旋转
-  scalable: true,       // 是否可以调整大小
+const canvasRef = ref(null)
+const cropBoxRef = ref(null)
+const activeNames = ref([])
+const ctx = ref(null)
+const originalImage = ref(null)
+const cropArea = ref({
+  x: 0,
+  y: 0,
+  width: 0,
+  height: 0,
+  isDragging: false,
+  isResizing: false
 })
 
-// 添加裁剪框大小变化处理
-const handleCropBoxData = (data) => {
-  const cropBox = cropperRef.value.getCropBoxData()
-  const newData = { ...cropBox }
+// 添加 editor-container 的引用
+const containerRef = ref(null)
 
-  // 如果是横向拖动，保持高度不变
-  if (Math.abs(cropBox.width - data.width) > Math.abs(cropBox.height - data.height)) {
-    newData.height = cropBox.height
-  }
-  // 如果是纵向拖动，保持宽度不变
-  else {
-    newData.width = cropBox.width
-  }
-
-  // 更新裁剪框数据
-  cropperRef.value.setCropBoxData(newData)
-}
-
-// 修改裁剪比例的方
-const setAspectRatio = (ratio) => {
-  console.log('setAspectRatio', ratio)
-  if (cropperRef.value) {
-    // 先清除现有的裁剪框
-    cropperRef.value.clearCrop()
-    
-    // 设置新的比例
-    if (ratio === 0) {
-      // 自由裁剪
-      cropOptions.value.fixed = false
-      cropOptions.value.fixedNumber = [1, 1]
-    } else if (ratio === 16/9) {
-      // 16:9 比例
-      cropOptions.value.fixed = true
-      cropOptions.value.fixedNumber = [16, 9]
-    } else if (ratio === 4/3) {
-      // 4:3 比例
-      cropOptions.value.fixed = true
-      cropOptions.value.fixedNumber = [4, 3]
-    } else {
-      // 其他比例
-      cropOptions.value.fixed = true
-      cropOptions.value.fixedNumber = [ratio, 1]
-    }
-    
-    // 刷新裁剪器
+// 监听 canvas 挂载
+onMounted(() => {
+  if (originalImage.value) {
     nextTick(() => {
-      if (cropperRef.value) {
-        cropperRef.value.refresh()
-        cropperRef.value.startCrop()
-      }
+      initCanvas(originalImage.value)
     })
   }
-}
+})
 
-// 自定义旋转角度
-const customRotation = ref(45)
-
-// 修改旋转图片的方法
-const rotateImage = (angle) => {
-  if (cropperRef.value) {
-    // 获取当前旋转角度
-    const currentRotate = cropperRef.value.$refs.cropper.rotate || 0
-    // 计算新的旋转角度
-    const newRotate = currentRotate + angle
-    // 设置新的旋转角度
-    cropperRef.value.$refs.cropper.rotate = newRotate
-    // 刷新裁剪器
-    cropperRef.value.refresh()
+// 修改初始化画布方法
+const initCanvas = (image) => {
+  if (!canvasRef.value || !containerRef.value) return
+  
+  const canvas = canvasRef.value
+  const container = containerRef.value
+  
+  // 设置画布大小
+  canvas.width = container.offsetWidth
+  canvas.height = container.offsetHeight
+  
+  // 绘制图片
+  drawImage(image)
+  
+  // 初始化裁剪框位置
+  const aspectRatio = 16/9
+  cropArea.value = {
+    x: canvas.width * 0.1,
+    y: canvas.height * 0.1,
+    width: canvas.width * 0.8,
+    height: (canvas.width * 0.8) / aspectRatio,
+    isDragging: false,
+    isResizing: false
   }
+  
+  // 更新裁剪框位置
+  updateCropBoxPosition()
 }
 
-// 修改翻转图片的方法
-const flipImage = (direction) => {
-console.log(cropperRef.value);
-
-  if (direction === 'horizontal') {
-    // 水平翻转
-    cropperRef.value.value.scale(-1, 1)
-  } else {
-    // 垂直翻转
-    cropperRef.value.value.scale(1, -1)
-  }
+// 绘制图片
+const drawImage = (image) => {
+  const canvas = canvasRef.value
+  const ctx = canvas.getContext('2d')
+  
+  // 清空画布
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  
+  // 计算图片缩放和位置
+  const scale = Math.min(
+    canvas.width / image.width,
+    canvas.height / image.height
+  )
+  
+  const x = (canvas.width - image.width * scale) / 2
+  const y = (canvas.height - image.height * scale) / 2
+  
+  // 绘制图片
+  ctx.drawImage(
+    image,
+    x, y,
+    image.width * scale,
+    image.height * scale
+  )
 }
 
-// 缩放控制
-const setZoom = (scale) => {
-  cropperRef.value.changeScale(scale)
+// 更新裁剪框位置
+const updateCropBoxPosition = () => {
+  if (!cropBoxRef.value) return
+  
+  const area = cropArea.value
+  cropBoxRef.value.style.left = `${area.x}px`
+  cropBoxRef.value.style.top = `${area.y}px`
+  cropBoxRef.value.style.width = `${area.width}px`
+  cropBoxRef.value.style.height = `${area.height}px`
 }
 
-// 切换选项
-const toggleOption = (option) => {
-  cropOptions.value[option] = !cropOptions.value[option]
-  if (cropperRef.value) {
-    cropperRef.value.refresh()
-  }
-}
-
-// ��改配置组定义，调整比例选项的顺序
-const configGroups = [
-  {
-    id: 'ratio',
-    title: '裁剪比例',
-    options: [
-      { value: 0, label: '自由裁剪' },  // 将自由裁剪放在第一位
-      { value: 16/9, label: '16:9' },
-      { value: 4/3, label: '4:3' },
-      { value: 1, label: '1:1' }
-    ]
-  },
-  {
-    id: 'transform',
-    title: '旋转',
-    options: [
-      { value: 'rotateRight90', label: '顺时针90°', action: () => cropperRef.value.rotateRight() },
-      { value: 'rotateLeft90', label: '逆时针90°', action: () => cropperRef.value.rotateLeft() },
-      { value: 'rotate45', label: '顺时针45°', action: () => rotateImage(45) },
-      { value: 'rotateLeft45', label: '逆时针45°', action: () => rotateImage(-45) }
-    ]
-  },
-  {
-    id: 'quality',
-    title: '输出设置',
-    options: [
-      { value: 'high', label: '高清输出', toggle: true },
-      { value: 'full', label: '原比例输出', toggle: true }
-    ]
-  }
-]
-
-// 处理选项点击
-const handleOptionClick = (option, groupId) => {
-  if (option.toggle) {
-    toggleOption(option.value)
-  } else if (option.action) {
-    option.action()
-  } else if (groupId === 'ratio') {
-    setAspectRatio(option.value)
-  }
-}
-
-// 处理文件拖拽
-const handleDrop = (e) => {
+// 处理裁剪框拖动
+const handleCropBoxMouseDown = (e) => {
   e.preventDefault()
-  const file = e.dataTransfer.files[0]
-  if (file && file.type.includes('image')) {
-    handleImage(file)
+  cropArea.value.isDragging = true
+  
+  const startX = e.clientX - cropArea.value.x
+  const startY = e.clientY - cropArea.value.y
+  
+  const handleMouseMove = (e) => {
+    if (!cropArea.value.isDragging) return
+    
+    const newX = e.clientX - startX
+    const newY = e.clientY - startY
+    
+    // 限制在画布范围内
+    cropArea.value.x = Math.max(0, Math.min(canvasRef.value.width - cropArea.value.width, newX))
+    cropArea.value.y = Math.max(0, Math.min(canvasRef.value.height - cropArea.value.height, newY))
+    
+    updateCropBoxPosition()
   }
+  
+  const handleMouseUp = () => {
+    cropArea.value.isDragging = false
+    document.removeEventListener('mousemove', handleMouseMove)
+    document.removeEventListener('mouseup', handleMouseUp)
+  }
+  
+  document.addEventListener('mousemove', handleMouseMove)
+  document.addEventListener('mouseup', handleMouseUp)
 }
 
-// 处理粘贴
-const handlePaste = (e) => {
-  const items = e.clipboardData.items
-  for (let item of items) {
-    if (item.type.includes('image')) {
-      const file = item.getAsFile()
-      handleImage(file)
-    }
-  }
-}
-
-// 处理文件选择
+// 修改文件选择处理
 const handleFileChange = (e) => {
   const file = e.target.files[0]
   if (file) {
-    handleImage(file)
-  }
-}
-
-// 处理图片文件
-const handleImage = (file) => {
-  const reader = new FileReader()
-  reader.onload = (e) => {
-    imgUrl.value = e.target.result
-  }
-  reader.readAsDataURL(file)
-}
-
-// 裁剪完成
-const cropFinish = () => {
-  cropperRef.value.getCropData((data) => {
-    // 创建下载链接
-    const link = document.createElement('a')
-    link.href = data
-    link.download = `cropped_image_${Date.now()}.jpg`  // 使用时间戳确保文件名唯一
-    
-    // 触发下载
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-  })
-}
-
-// 实时预览（可选）
-const handleRealTime = (data) => {
-  // 这里可以实时显示裁剪的结果
-  console.log('实时预览：', data)
-}
-
-// 添加拖拽状态处理
-const handleDragEnter = (e) => {
-  e.preventDefault()
-  e.currentTarget.setAttribute('data-dragging', 'true')
-}
-
-const handleDragLeave = (e) => {
-  e.preventDefault()
-  e.currentTarget.setAttribute('data-dragging', 'false')
-}
-
-// 修改工具栏定义
-const tools = [
-  {
-    id: 'mosaic',
-    label: '马赛克',
-    icon: '🔲',
-    action: () => {
-      isMosaicMode.value = !isMosaicMode.value
-      if (isMosaicMode.value) {
-        initFabricCanvas()
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const img = new Image()
+      img.onload = () => {
+        originalImage.value = img
+        nextTick(() => {
+          initCanvas(img)
+        })
       }
+      img.src = e.target.result
     }
-  },
-  {
-    id: 'brightness',
-    label: '亮度',
-    icon: '☀️',
-    slider: true,
-    min: -100,
-    max: 100,
-    value: 0,
-    action: (value) => {
-      // 处理亮度调整
-    }
-  },
-  {
-    id: 'contrast',
-    label: '对比度',
-    icon: '🌓',
-    slider: true,
-    min: -100,
-    max: 100,
-    value: 0,
-    action: (value) => {
-      // 处理对比度调整
-    }
+    reader.readAsDataURL(file)
   }
-]
-
-// 初始化 fabric.js 画布
-const initFabricCanvas = () => {
-  if (!cropperRef.value) return
-  
-  cropperRef.value.getCropData((data) => {
-    const container = document.querySelector('.cropper-container')
-    const canvas = document.createElement('canvas')
-    canvas.id = 'fabric-canvas'
-    canvas.style.position = 'absolute'
-    canvas.style.top = '0'
-    canvas.style.left = '0'
-    canvas.style.width = '100%'
-    canvas.style.height = '100%'
-    canvas.style.zIndex = '1000'
-    container.appendChild(canvas)
-    
-    fabricCanvas.value = new fabric.Canvas('fabric-canvas', {
-      width: container.offsetWidth,
-      height: container.offsetHeight,
-      isDrawingMode: true
-    })
-    
-    // 加载裁剪后的图片
-    fabric.Image.fromURL(data, (img) => {
-      img.scaleToWidth(container.offsetWidth)
-      fabricCanvas.value.add(img)
-      
-      // 创建马赛克画笔
-      fabricCanvas.value.freeDrawingBrush = new fabric.PatternBrush(fabricCanvas.value)
-      fabricCanvas.value.freeDrawingBrush.width = 20
-      fabricCanvas.value.freeDrawingBrush.color = 'rgba(0,0,0,0.5)'
-    })
-  })
 }
 
-// 应用马赛克效果
-const applyMosaic = () => {
-  if (!fabricCanvas.value) return
-  
-  const dataURL = fabricCanvas.value.toDataURL({
-    format: 'jpeg',
-    quality: 0.8
-  })
-  
-  imgUrl.value = dataURL
-  isMosaicMode.value = false
-  
-  // 清理 fabric.js 画布
-  fabricCanvas.value.dispose()
-  const canvas = document.getElementById('fabric-canvas')
-  if (canvas) {
-    canvas.remove()
+// 修改 handleMouseDown 方法以支持调整大小
+const handleMouseDown = (e) => {
+  const { offsetX, offsetY } = e
+  const area = cropArea.value
+  const handleSize = 8
+
+  // 检查是否点击在控制点上
+  const handles = [
+    { x: area.x, y: area.y, cursor: 'nw-resize' },
+    { x: area.x + area.width / 2, y: area.y, cursor: 'n-resize' },
+    { x: area.x + area.width, y: area.y, cursor: 'ne-resize' },
+    { x: area.x + area.width, y: area.y + area.height / 2, cursor: 'e-resize' },
+    { x: area.x + area.width, y: area.y + area.height, cursor: 'se-resize' },
+    { x: area.x + area.width / 2, y: area.y + area.height, cursor: 's-resize' },
+    { x: area.x, y: area.y + area.height, cursor: 'sw-resize' },
+    { x: area.x, y: area.y + area.height / 2, cursor: 'w-resize' }
+  ]
+
+  for (let i = 0; i < handles.length; i++) {
+    const handle = handles[i]
+    if (
+      offsetX >= handle.x - handleSize / 2 &&
+      offsetX <= handle.x + handleSize / 2 &&
+      offsetY >= handle.y - handleSize / 2 &&
+      offsetY <= handle.y + handleSize / 2
+    ) {
+      area.isResizing = true
+      area.resizeHandle = i
+      canvasRef.value.style.cursor = handle.cursor
+      return
+    }
   }
+
+  // 如果不是点击在控制点上，检查是否点击在裁剪框内
+  if (
+    offsetX >= area.x &&
+    offsetX <= area.x + area.width &&
+    offsetY >= area.y &&
+    offsetY <= area.y + area.height
+  ) {
+    area.isDragging = true
+    canvasRef.value.style.cursor = 'move'
+  }
+}
+
+// 修改 handleMouseMove 方法以支持调整大小
+const handleMouseMove = (e) => {
+  const { movementX, movementY } = e
+  const area = cropArea.value
+  const canvas = canvasRef.value
+
+  if (area.isResizing) {
+    // 根据不同的控制点调整大小
+    switch (area.resizeHandle) {
+      case 0: // 左上
+        area.x = Math.min(area.x + movementX, area.x + area.width)
+        area.y = Math.min(area.y + movementY, area.y + area.height)
+        area.width -= movementX
+        area.height -= movementY
+        break
+      case 4: // 右下
+        area.width = Math.max(10, area.width + movementX)
+        area.height = Math.max(10, area.height + movementY)
+        break
+      // ... 可以添加其他控制点的处理
+    }
+  } else if (area.isDragging) {
+    // 移动裁剪框
+    area.x = Math.max(0, Math.min(canvas.width - area.width, area.x + movementX))
+    area.y = Math.max(0, Math.min(canvas.height - area.height, area.y + movementY))
+  }
+
+  // 重新绘制
+  if (area.isResizing || area.isDragging) {
+    drawImage(originalImage.value)
+    drawCropArea()
+  }
+}
+
+// 修改 handleMouseUp 方法
+const handleMouseUp = () => {
+  cropArea.value.isDragging = false
+  cropArea.value.isResizing = false
+  canvasRef.value.style.cursor = 'crosshair'
+}
+
+// 确认裁剪
+const confirmCrop = () => {
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')
+  const area = cropArea.value
+  
+  // 设置输出画布大小
+  canvas.width = area.width
+  canvas.height = area.height
+  
+  // 裁剪并绘制
+  ctx.drawImage(
+    canvasRef.value,
+    area.x, area.y, area.width, area.height,
+    0, 0, area.width, area.height
+  )
+  
+  // 下载裁剪后的图片
+  const link = document.createElement('a')
+  link.download = `cropped_${Date.now()}.png`
+  link.href = canvas.toDataURL()
+  link.click()
 }
 </script>
 
 <template>
   <div class="container">
+    <!-- 工具面板 -->
     <div class="tools-panel">
       <el-collapse v-model="activeNames">
         <el-collapse-item 
@@ -374,28 +273,13 @@ const applyMosaic = () => {
           </template>
           
           <div class="config-options">
-            <template v-for="option in group.options" :key="option.value">
-              <el-button
-                :type="option.toggle ? (cropOptions[option.value] ? 'primary' : '') : 
-                       cropOptions.aspectRatio === option.value ? 'primary' : ''"
-                text
-                @click="handleOptionClick(option, group.id)"
-              >
-                {{ option.label }}
-              </el-button>
-              <!-- 自定义旋转角度输入框 -->
-              <el-input
-                v-if="option.custom"
-                v-model="customRotation"
-                type="number"
-                :min="-360"
-                :max="360"
-                placeholder="输入旋转角度"
-                style="margin-top: 8px;"
-              >
-                <template #append>°</template>
-              </el-input>
-            </template>
+            <el-button
+              v-for="option in group.options"
+              :key="option.value"
+              text
+            >
+              {{ option.label }}
+            </el-button>
           </div>
         </el-collapse-item>
       </el-collapse>
@@ -404,32 +288,30 @@ const applyMosaic = () => {
       <div class="action-buttons">
         <el-button 
           type="danger" 
-          :disabled="!imgUrl"
-          @click="imgUrl = ''"
+          :disabled="!originalImage"
+          @click="originalImage = null"
         >
           取消编辑
         </el-button>
         <el-button 
           type="primary"
-          :disabled="!imgUrl"
-          @click="cropFinish"
+          :disabled="!originalImage"
+          @click="confirmCrop"
         >
           确认裁剪
         </el-button>
       </div>
     </div>
 
-    <!-- 右侧内容区 -->
+    <!-- 编辑区域 -->
     <div class="content-panel">
       <div 
-        class="image-upload-container"
+        ref="containerRef"
+        class="editor-container"
         @drop="handleDrop"
         @dragover.prevent
-        @paste="handlePaste"
-        @dragenter="handleDragEnter"
-        @dragleave="handleDragLeave"
       >
-        <div v-if="!imgUrl" class="upload-area">
+        <div v-if="!originalImage" class="upload-area">
           <input 
             type="file" 
             accept="image/*" 
@@ -453,38 +335,25 @@ const applyMosaic = () => {
           </label>
         </div>
 
-        <div v-else class="cropper-container">
-          <vue-cropper
-            ref="cropperRef"
-            :img="imgUrl"
-            v-bind="cropOptions"
-            @cropend="handleCropBoxData"
-            @realTime="handleRealTime"
-          />
-        </div>
-      </div>
-
-      <!-- 底部工具栏 -->
-      <div v-if="imgUrl" class="toolbar">
-        <div 
-          v-for="tool in tools" 
-          :key="tool.id"
-          class="tool-item"
-          :class="{ 
-            active: tool.id === 'mosaic' ? isMosaicMode : currentTool === tool.id 
-          }"
-          @click="tool.action"
-        >
-          <span class="tool-icon">{{ tool.icon }}</span>
-          <span class="tool-label">{{ tool.label }}</span>
-          <el-slider
-            v-if="tool.slider && currentTool === tool.id"
-            v-model="tool.value"
-            :min="tool.min"
-            :max="tool.max"
-            @input="tool.action"
-          />
-        </div>
+        <template v-else>
+          <canvas
+            ref="canvasRef"
+            class="editor-canvas"
+          ></canvas>
+          
+          <!-- 裁剪框 -->
+          <div 
+            ref="cropBoxRef"
+            class="crop-box"
+            @mousedown="handleCropBoxMouseDown"
+          >
+            <!-- 调整大小的控制点 -->
+            <div class="resize-handle top-left"></div>
+            <div class="resize-handle top-right"></div>
+            <div class="resize-handle bottom-left"></div>
+            <div class="resize-handle bottom-right"></div>
+          </div>
+        </template>
       </div>
     </div>
   </div>
@@ -1074,5 +943,86 @@ const applyMosaic = () => {
 .tool-item.active {
   background: #e3f2fd;
   border: 2px solid #1976d2;
+}
+
+.leafer-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+  z-index: 1000;
+  background: transparent;
+}
+
+.editor-area {
+  width: 100%;
+  height: 100%;
+  background: #f5f5f5;
+}
+
+.editor-canvas {
+  width: 100%;
+  height: 100%;
+  background: #f5f5f5;
+  cursor: crosshair;
+}
+
+.editor-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.editor-canvas {
+  width: 100%;
+  height: 100%;
+  background: #f5f5f5;
+  cursor: crosshair;
+}
+
+/* 裁剪框样式 */
+.crop-box {
+  position: absolute;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
+  cursor: move;
+}
+
+/* 调整大小的控制点 */
+.resize-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #fff;
+  border: 1px solid #4CAF50;
+}
+
+.resize-handle.top-left {
+  top: -5px;
+  left: -5px;
+  cursor: nw-resize;
+}
+
+.resize-handle.top-right {
+  top: -5px;
+  right: -5px;
+  cursor: ne-resize;
+}
+
+.resize-handle.bottom-left {
+  bottom: -5px;
+  left: -5px;
+  cursor: sw-resize;
+}
+
+.resize-handle.bottom-right {
+  bottom: -5px;
+  right: -5px;
+  cursor: se-resize;
 }
 </style>
