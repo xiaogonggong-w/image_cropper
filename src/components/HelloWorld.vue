@@ -1070,7 +1070,7 @@ const handlePaste = (event) => {
             <!-- 快捷位置按钮 -->
             <div class="position-buttons">
               <el-button @click="handleQuickPosition('left-top')">左上</el-button>
-              <el-button @click="handleQuickPosition('center-top')">顶部���中</el-button>
+              <el-button @click="handleQuickPosition('center-top')">顶部居中</el-button>
               <el-button @click="handleQuickPosition('right-top')">右上</el-button>
             </div>
             <div class="position-buttons">
