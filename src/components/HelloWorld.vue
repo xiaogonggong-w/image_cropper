@@ -49,34 +49,26 @@ const maxHistoryLength = 20 // 限制历史记录数量
 const containerRef = ref(null)
 
 function handleCanvasDraw() {
-  if (!canvasRef.value) return
+  if (!canvasRef.value || !originalImage.value) return
 
-  // 获取画布上下文
   const ctx = canvasRef.value.getContext('2d')
   const canvas = canvasRef.value
 
-
-
   // 清空画布
   ctx.clearRect(0, 0, canvas.width, canvas.height)
+
   // 保存当前状态
   ctx.save()
 
-
   // 旋转
-  // 移动到画布中心
   ctx.translate(canvas.width / 2, canvas.height / 2)
-  // 旋转
   ctx.rotate((config.rotateAngle * Math.PI) / 180)
 
   // 缩放
-  // 计算基础缩放比例
   const baseScale = Math.min(
     canvas.width / originalImage.value.width,
     canvas.height / originalImage.value.height
   )
-
-  // 应用额外的缩放
   const finalScale = baseScale * (config.scale / 100)
 
   // 绘制图片
@@ -87,8 +79,6 @@ function handleCanvasDraw() {
     originalImage.value.width * finalScale,
     originalImage.value.height * finalScale
   )
-
-
 
   // 恢复状态
   ctx.restore()
@@ -104,7 +94,7 @@ function handleCanvasDraw() {
 const handleRotate = (value) => {
   if (!cropArea.value || !canvasRef.value) return
 
-  // 如果是点击按钮传入的值，直接加到当前角度上
+  // 如果是点击按钮入的值，直接加到当前角度上
   if (typeof value === 'number') {
     config.rotateAngle = ((config.rotateAngle + value) % 360 + 360) % 360
   } else {
@@ -163,7 +153,7 @@ const handleWatermarkPosition = (position) => {
   if (!cropArea.value) return
 
   const area = cropArea.value
-  const padding = config.watermark.size // 使用文字大小作为边距
+  const padding = config.watermark.size // 使用文字大小作为距
 
   switch (position) {
     case 'left-top':
@@ -731,7 +721,7 @@ const isPointInCropArea = (x, y) => {
   )
 }
 
-// 修改马赛克绘制方法
+// 修改马赛克绘制��法
 const drawMosaic = (x, y) => {
   if (!isPointInCropArea(x, y)) return
   // 在绘制前保存当前状态
@@ -762,7 +752,7 @@ const drawMosaicOperation = (ctx, size, points) => {
     const gridX = Math.floor(point.x / size) * size
     const gridY = Math.floor(point.y / size) * size
 
-    // 获取区域的平��颜色
+    // 获取区域的平均颜色
     const imageData = ctx.getImageData(gridX, gridY, size, size)
     const color = getAverageColor(imageData.data)
 
@@ -998,6 +988,39 @@ onMounted(() => {
   })
 })
 
+onMounted(() => {
+  window.addEventListener('paste', handlePaste)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('paste', handlePaste)
+})
+
+// 处理粘贴事件
+const handlePaste = (event) => {
+  const items = event.clipboardData.items
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i]
+    if (item.type.startsWith('image/')) {
+      const file = item.getAsFile()
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        // 将图像数据放置在预览区
+        const img = new Image()
+        img.onload = () => {
+          originalImage.value = img
+          // 这里可以调用绘制函数
+          nextTick(() => {
+            initCanvas(img)
+          })
+        }
+        img.src = e.target.result
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+}
+
 </script>
 
 <template>
@@ -1047,7 +1070,7 @@ onMounted(() => {
             <!-- 快捷位置按钮 -->
             <div class="position-buttons">
               <el-button @click="handleQuickPosition('left-top')">左上</el-button>
-              <el-button @click="handleQuickPosition('center-top')">顶部居中</el-button>
+              <el-button @click="handleQuickPosition('center-top')">顶部���中</el-button>
               <el-button @click="handleQuickPosition('right-top')">右上</el-button>
             </div>
             <div class="position-buttons">
@@ -2007,7 +2030,7 @@ onMounted(() => {
   flex: 1;
 }
 
-/* 确保输入框和按钮样式统一 */
+/* 确保输入框和按钮样式一 */
 :deep(.el-input-number) {
   width: 100%;
 }
@@ -2034,7 +2057,7 @@ onMounted(() => {
   font-size: 12px;
 }
 
-/* 修改编辑区域布��� */
+/* 修改编辑区域布 */
 .editor-wrapper {
   display: none;
 }
