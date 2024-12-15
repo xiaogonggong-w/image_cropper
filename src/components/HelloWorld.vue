@@ -751,8 +751,6 @@ const drawMosaic = (x, y) => {
 }
 // 绘制马赛克
 const drawMosaicOperation = (ctx, size, points) => {
-  // 清除上面的马赛克
-  ctx.clearRect(0, 0, canvasRef.value.width, canvasRef.value.height)
   points.forEach(point => {
     if (!isPointInCropArea(point.x, point.y)) return
 
@@ -773,6 +771,8 @@ const drawMosaicOperation = (ctx, size, points) => {
 // 恢复马赛克和画笔
 const restoreToolsOperations = () => {
   const ctx = canvasRef.value.getContext('2d')
+  // 清除上面的马赛克
+  ctx.clearRect(0, 0, canvasRef.value.width, canvasRef.value.height)
   drawHistory.value.forEach(item => {
     if (item.type === 'mosaic') {
       item.data.forEach(data => {
