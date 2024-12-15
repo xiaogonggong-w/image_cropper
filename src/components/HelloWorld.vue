@@ -17,7 +17,6 @@ const cropArea = ref({
 // 添加画笔相关状态
 const brushColor = ref('#FF0000') // 默认色
 const brushSize = ref(5) // 默认大小
-const brushHistory = ref([]) // 用于保存绘制历史
 // 尺寸、旋转、缩放、位置
 const config = reactive({
   rotateAngle: 0,
@@ -37,6 +36,10 @@ const config = reactive({
 
 // 撤销恢复的历史状态
 const redoHistory = ref([])
+
+// 添加历史记录状态
+const drawHistory = ref([])
+const maxHistoryLength = 20 // 限制历史记录数量
 
 // 添加 editor-container 的引用
 const containerRef = ref(null)
@@ -76,7 +79,7 @@ function handleCanvasDraw() {
   ctx.drawImage(
     originalImage.value,
     -originalImage.value.width * finalScale / 2,
-      -originalImage.value.height * finalScale / 2,
+    -originalImage.value.height * finalScale / 2,
     originalImage.value.width * finalScale,
     originalImage.value.height * finalScale
   )
@@ -724,9 +727,9 @@ const isPointInCropArea = (x, y) => {
 const drawMosaic = (x, y) => {
   if (!isPointInCropArea(x, y)) return
   // 在绘制前保存当前状态
-  if (!lastPos.value.x && !lastPos.value.y) {
-    saveDrawState()
-  }
+  // if (!lastPos.value.x && !lastPos.value.y) {
+  //   saveDrawState()
+  // }
   const ctx = canvasRef.value.getContext('2d')
   const size = 10 // 马赛克块大小
 
@@ -748,35 +751,54 @@ const drawMosaic = (x, y) => {
     ctx.fillStyle = `rgb(${color.r}, ${color.g}, ${color.b})`
     ctx.fillRect(gridX, gridY, size, size)
   })
+
+  // 保存马赛克操作
+  const len = drawHistory.value.length;
+  drawHistory.value[len - 1].data.push({
+    size: 10,
+    points: points
+  })
 }
 
 // 修改画笔绘制方法
 const drawBrush = (x, y) => {
   if (!isPointInCropArea(x, y)) return
   // 在绘制前保存当前状态
-  if (!lastPos.value.x && !lastPos.value.y) {
-    saveDrawState()
-  }
+  // if (!lastPos.value.x && !lastPos.value.y) {
+  //   saveDrawState()
+  // }
   const ctx = canvasRef.value.getContext('2d')
 
-    // 使用裁剪区域限制绘制范围
-    ctx.save()
-    ctx.beginPath()
-    ctx.rect(cropArea.value.x, cropArea.value.y, cropArea.value.width, cropArea.value.height)
-    ctx.clip()
+  // 使用裁剪区域限制绘制范围
+  ctx.save()
+  ctx.beginPath()
+  ctx.rect(cropArea.value.x, cropArea.value.y, cropArea.value.width, cropArea.value.height)
+  ctx.clip()
 
-    // 绘制线条
-    ctx.beginPath()
-    ctx.moveTo(lastPos.value.x, lastPos.value.y)
-    ctx.lineTo(x, y)
-    ctx.strokeStyle = brushColor.value
-    ctx.lineWidth = brushSize.value
-    ctx.lineCap = 'round'
-    ctx.lineJoin = 'round'
-    ctx.stroke()
+  // 绘制线条
+  ctx.beginPath()
+  ctx.moveTo(lastPos.value.x, lastPos.value.y)
+  ctx.lineTo(x, y)
+  ctx.strokeStyle = brushColor.value
+  ctx.lineWidth = brushSize.value
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  ctx.stroke()
 
-    ctx.restore()
+  ctx.restore()
+
+  // 保存画笔操作
+  const len = drawHistory.value.length;
+  drawHistory.value[len - 1].data.push({
+    size: brushSize.value,
+    points: {
+      x: lastPos.value.x,
+      y: lastPos.value.y
+    }
+  })
 }
+
+// 鼠标按下
 const handleCanvasMouseDown = (e) => {
   if (!currentTool.value || !['mosaic', 'brush'].includes(currentTool.value)) return
 
@@ -786,19 +808,20 @@ const handleCanvasMouseDown = (e) => {
 
   // 检查起始点是否在裁剪框内
   if (!isPointInCropArea(x, y)) return
-  // 开始绘制前保存状态
-  saveDrawState()
+
   isDrawing.value = true
   lastPos.value = { x, y }
-
+  // 开始绘制前保存状态
+  saveDrawState()
   // 开始新的路径
   if (currentTool.value === 'brush') {
-    drawBrush(x,y);
+    drawBrush(x, y);
   } else if (currentTool.value === 'mosaic') {
     drawMosaic(x, y)
   }
 }
 
+// 鼠标移动
 const handleCanvasMouseMove = (e) => {
   if (!isDrawing.value || !currentTool.value) return
 
@@ -815,12 +838,10 @@ const handleCanvasMouseMove = (e) => {
   lastPos.value = { x, y }
 }
 
+// 鼠标抬起
 const handleCanvasMouseUp = () => {
-  if (isDrawing.value && currentTool.value === 'brush') {
-    // 保存当前画布状态
-    brushHistory.value.push(canvasRef.value.toDataURL())
-  }
   isDrawing.value = false
+  console.log('drawHistory', drawHistory.value)
 }
 
 // 获取两点之间的所有点
@@ -872,25 +893,29 @@ const getAverageColor = (data) => {
 
 
 
-// 添加历史记录状态
-const drawHistory = ref([])
-const maxHistoryLength = 20 // 限制历史记录数量
+
 
 // 添加保存历史记录的方法
 const saveDrawState = () => {
   if (!canvasRef.value) return
 
+  // 保存状态是保存数据
+  drawHistory.value.push({
+    type: currentTool.value,
+    data: []
+  })
+
   // 保存当前画布状态
-  const state = canvasRef.value.toDataURL()
-  drawHistory.value.push(state)
+  // const state = canvasRef.value.toDataURL()
+  // drawHistory.value.push(state)
 
-  // 清空恢复历史
-  redoHistory.value = []
+  // // 清空恢复历史
+  // redoHistory.value = []
 
-  // 限制历史记录数量
-  if (drawHistory.value.length > maxHistoryLength) {
-    drawHistory.value.shift()
-  }
+  // // 限制历史记录数量
+  // if (drawHistory.value.length > maxHistoryLength) {
+  //   drawHistory.value.shift()
+  // }
 }
 
 // 修改撤销方法
@@ -949,10 +974,6 @@ onMounted(() => {
       redoDraw()
     }
   })
-})
-
-onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeyDown)
 })
 
 </script>
