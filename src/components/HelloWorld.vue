@@ -771,8 +771,7 @@ const drawMosaicOperation = (ctx, size, points) => {
 // 恢复马赛克和画笔
 const restoreToolsOperations = () => {
   const ctx = canvasRef.value.getContext('2d')
-  // 清除上面的马赛克
-  ctx.clearRect(0, 0, canvasRef.value.width, canvasRef.value.height)
+
   drawHistory.value.forEach(item => {
     if (item.type === 'mosaic') {
       item.data.forEach(data => {
@@ -954,7 +953,11 @@ const undoDraw = () => {
   redoHistory.value.push(previousState)
 
   // 恢复马赛克和画笔
-  restoreToolsOperations()
+  const ctx = canvasRef.value.getContext('2d')
+  ctx.clearRect(0, 0, canvasRef.value.width, canvasRef.value.height)
+
+  // 重新绘制原图
+  handleCanvasDraw()
 }
 
 // 添加恢复方法
@@ -965,13 +968,18 @@ const redoDraw = () => {
   // 获取当前状态并保存到撤销历史
   drawHistory.value.push(nextState)
   // 恢复马赛克和画笔
-  restoreToolsOperations()
+  // 清除上面的马赛克
+  const ctx = canvasRef.value.getContext('2d')
+  ctx.clearRect(0, 0, canvasRef.value.width, canvasRef.value.height)
+
+  // 重新绘制原图
+  handleCanvasDraw()
 
 
 }
 
 // 修改键盘快捷键支持
-onMounted(() => { 
+onMounted(() => {
   window.addEventListener('keydown', (e) => {
     // Ctrl+Z 撤销
     if (e.ctrlKey && !e.shiftKey && e.key === 'z') {
