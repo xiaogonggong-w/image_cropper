@@ -2,7 +2,11 @@
 import { ref, onMounted, nextTick, computed, onUnmounted, reactive } from 'vue'
 import { ElCollapse, ElCollapseItem, ElButton, ElInput, ElTooltip, ElColorPicker, ElSlider, ElScrollbar, ElRadioGroup, ElRadio } from 'element-plus'
 import 'element-plus/dist/index.css'
-import { Camera, Edit, ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
+import hb from '../assets/hb.svg'
+import msk from '../assets/msk.svg'
+import redo from '../assets/redo.svg'
+import undo from '../assets/undo.svg'
+
 const canvasRef = ref(null)
 const cropBoxRef = ref(null)
 const originalImage = ref(null)
@@ -1238,25 +1242,25 @@ onMounted(() => {
       <div v-if="originalImage" class="bottom-toolbar">
         <el-tooltip content="马赛克" placement="top">
           <div class="tool-item" :class="{ active: currentTool === 'mosaic' }" @click="toggleTool('mosaic')">
-            <Camera style="width: 1em; height: 1em;" />
+            <img :src="msk" alt="马赛克" style="width: 1em; height: 1em;">
           </div>
         </el-tooltip>
 
         <el-tooltip content="画笔" placement="top">
           <div class="tool-item" :class="{ active: currentTool === 'brush' }" @click="toggleTool('brush')">
-            <Edit style="width: 1em; height: 1em;" />
+            <img :src="hb" alt="画笔" style="width: 1em; height: 1em;">
           </div>
         </el-tooltip>
 
         <el-tooltip content="撤销" placement="top">
           <div class="tool-item" :class="{ disabled: !drawHistory.length }" @click="drawHistory.length && undoDraw()">
-            <ArrowLeft style="width: 1em; height: 1em;" />
+            <img :src="undo" alt="撤销" style="width: 1em; height: 1em;">
           </div>
         </el-tooltip>
 
         <el-tooltip content="恢复" placement="top">
           <div class="tool-item" :class="{ disabled: !redoHistory.length }" @click="redoHistory.length && redoDraw()">
-            <ArrowRight style="width: 1em; height: 1em;" />
+            <img :src="redo" alt="恢复" style="width: 1em; height: 1em;">
           </div>
         </el-tooltip>
       </div>
