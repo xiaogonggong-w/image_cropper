@@ -1,5 +1,12 @@
-# Vue 3 + Vite
+✅ 裁剪框尺寸调整
+✅ 裁剪框位置控制
+✅ 图片旋转控制
+✅ 图片缩放控制
+✅ 图片的水印控制
+✅ 图片可以加上马赛克
+✅ 图片可以自由画笔
+✅ 拖拽、选择、粘贴等上传方式
 
-This template should help get you started developing with Vue 3 in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
-
-Learn more about IDE Support for Vue in the [Vue Docs Scaling up Guide](https://vuejs.org/guide/scaling-up/tooling.html#ide-support).
+后续增加:
+🥞 保存配置项,使其可以快捷应用到图片上
+🥞 批量导入和导出
