@@ -88,8 +88,12 @@ function handleCanvasDraw() {
 
   // 恢复状态
   ctx.restore()
+
+  // 恢复水印
   drawWatermark()
 
+  // 恢复马赛克和画笔
+  restoreToolsOperations()
 }
 
 // 添加旋转处理方法
@@ -736,6 +740,19 @@ const drawMosaic = (x, y) => {
   // 获取起点和终点之间的所有点
   const points = getLinePoints(lastPos.value.x, lastPos.value.y, x, y)
 
+  drawMosaicOperation(ctx, size, points)
+
+  // 保存马赛克操作
+  const len = drawHistory.value.length;
+  drawHistory.value[len - 1].data.push({
+    size: size,
+    points: points
+  })
+}
+// 绘制马赛克
+const drawMosaicOperation = (ctx, size, points) => {
+  // 清除上面的马赛克
+  ctx.clearRect(0, 0, canvasRef.value.width, canvasRef.value.height)
   points.forEach(point => {
     if (!isPointInCropArea(point.x, point.y)) return
 
@@ -751,12 +768,21 @@ const drawMosaic = (x, y) => {
     ctx.fillStyle = `rgb(${color.r}, ${color.g}, ${color.b})`
     ctx.fillRect(gridX, gridY, size, size)
   })
+}
 
-  // 保存马赛克操作
-  const len = drawHistory.value.length;
-  drawHistory.value[len - 1].data.push({
-    size: 10,
-    points: points
+// 恢复马赛克和画笔
+const restoreToolsOperations = () => {
+  const ctx = canvasRef.value.getContext('2d')
+  drawHistory.value.forEach(item => {
+    if (item.type === 'mosaic') {
+      item.data.forEach(data => {
+        drawMosaicOperation(ctx, data.size, data.points)
+      })
+    } else if (item.type === 'brush') {
+      item.data.forEach(data => {
+        drawBrushOperation(ctx, data.points)
+      })
+    }
   })
 }
 
@@ -770,32 +796,43 @@ const drawBrush = (x, y) => {
   const ctx = canvasRef.value.getContext('2d')
 
   // 使用裁剪区域限制绘制范围
-  ctx.save()
+  // ctx.save()
   ctx.beginPath()
   ctx.rect(cropArea.value.x, cropArea.value.y, cropArea.value.width, cropArea.value.height)
   ctx.clip()
+  drawBrushOperation(ctx, {
+    x1: lastPos.value.x,
+    y1: lastPos.value.y,
+    x2: x,
+    y2: y
+  })
 
-  // 绘制线条
-  ctx.beginPath()
-  ctx.moveTo(lastPos.value.x, lastPos.value.y)
-  ctx.lineTo(x, y)
-  ctx.strokeStyle = brushColor.value
-  ctx.lineWidth = brushSize.value
-  ctx.lineCap = 'round'
-  ctx.lineJoin = 'round'
-  ctx.stroke()
 
-  ctx.restore()
+  // ctx.restore()
 
   // 保存画笔操作
   const len = drawHistory.value.length;
   drawHistory.value[len - 1].data.push({
     size: brushSize.value,
     points: {
-      x: lastPos.value.x,
-      y: lastPos.value.y
+      x1: lastPos.value.x,
+      y1: lastPos.value.y,
+      x2: x,
+      y2: y
     }
   })
+}
+// 绘制画笔操作
+const drawBrushOperation = (ctx, point) => {
+  // 绘制线条
+  ctx.beginPath()
+  ctx.moveTo(point.x1, point.y1)
+  ctx.lineTo(point.x2, point.y2)
+  ctx.strokeStyle = brushColor.value
+  ctx.lineWidth = brushSize.value
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  ctx.stroke()
 }
 
 // 鼠标按下
@@ -904,18 +941,6 @@ const saveDrawState = () => {
     type: currentTool.value,
     data: []
   })
-
-  // 保存当前画布状态
-  // const state = canvasRef.value.toDataURL()
-  // drawHistory.value.push(state)
-
-  // // 清空恢复历史
-  // redoHistory.value = []
-
-  // // 限制历史记录数量
-  // if (drawHistory.value.length > maxHistoryLength) {
-  //   drawHistory.value.shift()
-  // }
 }
 
 // 修改撤销方法
@@ -923,45 +948,30 @@ const undoDraw = () => {
   if (!drawHistory.value.length || !canvasRef.value) return
 
   // 获取当前状态并保存到恢复历史
-  const currentState = canvasRef.value.toDataURL()
-  redoHistory.value.push(currentState)
-
-  // 获取上一个状态
   const previousState = drawHistory.value.pop()
-  const img = new Image()
 
-  img.onload = () => {
-    const ctx = canvasRef.value.getContext('2d')
-    ctx.clearRect(0, 0, canvasRef.value.width, canvasRef.value.height)
-    ctx.drawImage(img, 0, 0)
-  }
+  console.log('previousState', previousState)
+  redoHistory.value.push(previousState)
 
-  img.src = previousState
+  // 恢复马赛克和画笔
+  restoreToolsOperations()
 }
 
 // 添加恢复方法
 const redoDraw = () => {
   if (!redoHistory.value.length || !canvasRef.value) return
-
-  // 获取当前状态并保存到撤销历史
-  const currentState = canvasRef.value.toDataURL()
-  drawHistory.value.push(currentState)
-
   // 获取下一个状态
   const nextState = redoHistory.value.pop()
-  const img = new Image()
+  // 获取当前状态并保存到撤销历史
+  drawHistory.value.push(nextState)
+  // 恢复马赛克和画笔
+  restoreToolsOperations()
 
-  img.onload = () => {
-    const ctx = canvasRef.value.getContext('2d')
-    ctx.clearRect(0, 0, canvasRef.value.width, canvasRef.value.height)
-    ctx.drawImage(img, 0, 0)
-  }
 
-  img.src = nextState
 }
 
 // 修改键盘快捷键支持
-onMounted(() => {
+onMounted(() => { 
   window.addEventListener('keydown', (e) => {
     // Ctrl+Z 撤销
     if (e.ctrlKey && !e.shiftKey && e.key === 'z') {
