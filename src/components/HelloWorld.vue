@@ -1,18 +1,41 @@
 <script setup>
-import { ref, onMounted, nextTick, computed, onUnmounted, reactive, watch } from 'vue'
-import { ElCollapse, ElCollapseItem, ElButton, ElInput, ElTooltip, ElColorPicker, ElSlider, ElScrollbar, ElRadioGroup, ElRadio, ElSelect, ElOption } from 'element-plus'
-import 'element-plus/dist/index.css'
-import hb from '../assets/hb.svg'
-import msk from '../assets/msk.svg'
-import redo from '../assets/redo.svg'
-import undo from '../assets/undo.svg'
-import { Folder, Setting, Plus, Delete } from '@element-plus/icons-vue'
+import {
+  ref,
+  onMounted,
+  nextTick,
+  computed,
+  onUnmounted,
+  reactive,
+  watch
+} from "vue";
+import {
+  ElCollapse,
+  ElCollapseItem,
+  ElButton,
+  ElInput,
+  ElTooltip,
+  ElColorPicker,
+  ElSlider,
+  ElScrollbar,
+  ElRadioGroup,
+  ElRadio,
+  ElSelect,
+  ElOption
+} from "element-plus";
+import "element-plus/dist/index.css";
+import hb from "../assets/hb.svg";
+import msk from "../assets/msk.svg";
+import redo from "../assets/redo.svg";
+import undo from "../assets/undo.svg";
+import { Folder, Setting, Plus, Delete } from "@element-plus/icons-vue";
+import { nanoid } from "nanoid";
+import { deepClone } from "./util";
 
-const canvasRef = ref(null)
-const cropBoxRef = ref(null)
-const originalImage = ref(null)
-const currentNav = ref('')
-const imageFiles = ref([])
+const canvasRef = ref(null);
+const cropBoxRef = ref(null);
+const originalImage = ref(null);
+const currentNav = ref("");
+const imageFiles = ref([]);
 const cropArea = ref({
   x: 0,
   y: 0,
@@ -20,157 +43,162 @@ const cropArea = ref({
   height: 0,
   isDragging: false,
   isResizing: false
-})
+});
 // 添加画笔相关状态
-const brushColor = ref('#FF0000') // 默认色
-const brushSize = ref(5) // 默认大小
-// 尺寸、旋转、缩放、位置
-const config = reactive({
+const brushColor = ref("#FF0000"); // 默认色
+const brushSize = ref(5); // 默认大小
+
+const defaultConfig = {
   rotateAngle: 0,
   scale: 100,
   watermark: {
-    text: '',
+    text: "",
     size: 24,
-    color: '#000000',
+    color: "#000000",
     opacity: 50,
-    mode: 'single',
+    mode: "single",
     position: {
       x: 0,
       y: 0
     }
   },
   export: {
-    backgroundColor: '#FFFFFF'  // 将backgroundColor移入config中
+    backgroundColor: "#FFFFFF" // 将backgroundColor移入config中
   }
-})
+};
+
+// 尺寸、旋转、缩放、位置
+const config = reactive(deepClone(defaultConfig));
 
 // 撤销恢复的历史状态
-const redoHistory = ref([])
+const redoHistory = ref([]);
 
 // 添加历史记录状态
-const drawHistory = ref([])
-const maxHistoryLength = 20 // 限制历史记录数量
+const drawHistory = ref([]);
+const maxHistoryLength = 20; // 限制历史记录数量
 
 // 添加 editor-container 的引用
-const containerRef = ref(null)
+const containerRef = ref(null);
 
 // 添加形状相关的响应式变量
-const cropShape = ref('rect') // 默认矩形
+const cropShape = ref("rect"); // 默认矩形
 const shapeOptions = [
-  { label: '矩形', value: 'rect' },
-  { label: '圆形', value: 'circle' }
-]
+  { label: "矩形", value: "rect" },
+  { label: "圆形", value: "circle" }
+];
 
 // 添加背景颜色状态
-const backgroundColor = ref('#FFFFFF') // 默认白色背景
+const backgroundColor = ref("#FFFFFF"); // 默认白色背景
 
 // 添加文件输入框的引用
-const fileInput = ref(null)
+const fileInput = ref(null);
 
 // 添加当前选中文件索引
-const currentFileIndex = ref(-1)
+const currentFileIndex = ref(-1);
 
 function handleCanvasDraw() {
-  if (!canvasRef.value || !originalImage.value) return
+  if (!canvasRef.value || !originalImage.value) return;
 
-  const ctx = canvasRef.value.getContext('2d')
-  const canvas = canvasRef.value
+  const ctx = canvasRef.value.getContext("2d");
+  const canvas = canvasRef.value;
 
   // 清空画布
-  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   // 保存当前状态
-  ctx.save()
+  ctx.save();
 
   // 旋转
-  ctx.translate(canvas.width / 2, canvas.height / 2)
-  ctx.rotate((config.rotateAngle * Math.PI) / 180)
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate((config.rotateAngle * Math.PI) / 180);
 
   // 缩放
   const baseScale = Math.min(
     canvas.width / originalImage.value.width,
     canvas.height / originalImage.value.height
-  )
-  const finalScale = baseScale * (config.scale / 100)
+  );
+  const finalScale = baseScale * (config.scale / 100);
 
   // 绘制图片
   ctx.drawImage(
     originalImage.value,
-    -originalImage.value.width * finalScale / 2,
-    -originalImage.value.height * finalScale / 2,
+    (-originalImage.value.width * finalScale) / 2,
+    (-originalImage.value.height * finalScale) / 2,
     originalImage.value.width * finalScale,
     originalImage.value.height * finalScale
-  )
+  );
 
   // 恢复状态
-  ctx.restore()
+  ctx.restore();
 
   // 恢复水印
-  drawWatermark()
+  drawWatermark();
 
   // ��复马赛克和画笔
-  restoreToolsOperations()
+  restoreToolsOperations();
 }
 
 // 修改旋转处理方法
-const handleRotate = (value) => {
-  if (!cropArea.value || !canvasRef.value || !originalImage.value) return
+const handleRotate = value => {
+  if (!cropArea.value || !canvasRef.value || !originalImage.value) return;
 
   // 如果是点击按钮入的值，直接加到当前角度上
-  if (typeof value === 'number') {
-    config.rotateAngle = ((config.rotateAngle + value) % 360 + 360) % 360
+  if (typeof value === "number") {
+    config.rotateAngle = (((config.rotateAngle + value) % 360) + 360) % 360;
   } else {
     // 如果是输入框输入的值，直接设置角度
-    const angle = parseInt(value)
-    if (isNaN(angle)) return
-    config.rotateAngle = ((angle % 360) + 360) % 360
+    const angle = parseInt(value);
+    if (isNaN(angle)) return;
+    config.rotateAngle = ((angle % 360) + 360) % 360;
   }
 
   // 更新图片位置和尺寸
-  updateImagePosition()
-  handleCanvasDraw()
-}
+  updateImagePosition();
+  handleCanvasDraw();
+};
 
 // 修改缩放处理方法
-const handleScale = (value) => {
-  if (!canvasRef.value || !originalImage.value) return
+const handleScale = value => {
+  if (!canvasRef.value || !originalImage.value) return;
 
-  let newScale
-  if (typeof value === 'number') {
+  let newScale;
+  if (typeof value === "number") {
     // 按钮点击，增加或减少缩放
-    newScale = Math.min(200, Math.max(10, config.scale + value))
+    newScale = Math.min(200, Math.max(10, config.scale + value));
   } else {
     // 输入框输入
-    newScale = Math.min(200, Math.max(10, parseInt(value) || 100))
+    newScale = Math.min(200, Math.max(10, parseInt(value) || 100));
   }
 
-  config.scale = newScale
+  config.scale = newScale;
 
   // 更新图片位置和尺寸
-  updateImagePosition()
-  handleCanvasDraw()
-}
+  updateImagePosition();
+  handleCanvasDraw();
+};
 
 // 添加更新图片位置和尺寸的方法
 const updateImagePosition = () => {
-  if (!canvasRef.value || !originalImage.value) return
+  if (!canvasRef.value || !originalImage.value) return;
 
-  const canvas = canvasRef.value
-  const image = originalImage.value
+  const canvas = canvasRef.value;
+  const image = originalImage.value;
 
   // 计算基础缩放比例
   const baseScale = Math.min(
     canvas.width / image.width,
     canvas.height / image.height
-  )
-  const finalScale = baseScale * (config.scale / 100)
+  );
+  const finalScale = baseScale * (config.scale / 100);
 
   // 计算旋转后的尺寸
-  const angle = (config.rotateAngle * Math.PI) / 180
-  const rotatedWidth = Math.abs(Math.cos(angle) * image.width * finalScale) + 
-                      Math.abs(Math.sin(angle) * image.height * finalScale)
-  const rotatedHeight = Math.abs(Math.sin(angle) * image.width * finalScale) + 
-                       Math.abs(Math.cos(angle) * image.height * finalScale)
+  const angle = (config.rotateAngle * Math.PI) / 180;
+  const rotatedWidth =
+    Math.abs(Math.cos(angle) * image.width * finalScale) +
+    Math.abs(Math.sin(angle) * image.height * finalScale);
+  const rotatedHeight =
+    Math.abs(Math.sin(angle) * image.width * finalScale) +
+    Math.abs(Math.cos(angle) * image.height * finalScale);
 
   // 更新图片位置信息
   imagePosition.value = {
@@ -179,307 +207,301 @@ const updateImagePosition = () => {
     width: rotatedWidth,
     height: rotatedHeight,
     scale: finalScale
-  }
-}
+  };
+};
 
 // 添加预定义颜色
 const predefineColors = [
-  '#ff4500',
-  '#ff8c00',
-  '#ffd700',
-  '#90ee90',
-  '#00ced1',
-  '#1e90ff',
-  '#c71585',
-  '#000000',
-  '#ffffff'
-]
+  "#ff4500",
+  "#ff8c00",
+  "#ffd700",
+  "#90ee90",
+  "#00ced1",
+  "#1e90ff",
+  "#c71585",
+  "#000000",
+  "#ffffff"
+];
 
 // 修改水印颜色处理方法
-const handleWatermarkColorChange = (color) => {
-  config.watermark.color = color
-  updateWatermark()
-}
-
+const handleWatermarkColorChange = color => {
+  config.watermark.color = color;
+  updateWatermark();
+};
 
 // 修改水印位置处理方法
-const handleWatermarkPosition = (position) => {
-  if (!cropArea.value) return
+const handleWatermarkPosition = position => {
+  if (!cropArea.value) return;
 
-  const area = cropArea.value
-  const padding = config.watermark.size // 使用文字大小作为距
+  const area = cropArea.value;
+  const padding = config.watermark.size; // 使用文字大小作为距
 
   switch (position) {
-    case 'left-top':
+    case "left-top":
       config.watermark.position = {
         x: area.x + padding,
         y: area.y + padding
-      }
-      break
-    case 'center-top':
+      };
+      break;
+    case "center-top":
       config.watermark.position = {
         x: area.x + area.width / 2,
         y: area.y + padding
-      }
-      break
-    case 'right-top':
+      };
+      break;
+    case "right-top":
       config.watermark.position = {
         x: area.x + area.width - padding,
         y: area.y + padding
-      }
-      break
-    case 'center':
+      };
+      break;
+    case "center":
       config.watermark.position = {
         x: area.x + area.width / 2,
         y: area.y + area.height / 2
-      }
-      break
-    case 'left-bottom':
+      };
+      break;
+    case "left-bottom":
       config.watermark.position = {
         x: area.x + padding,
         y: area.y + area.height - padding
-      }
-      break
-    case 'center-bottom':
+      };
+      break;
+    case "center-bottom":
       config.watermark.position = {
         x: area.x + area.width / 2,
         y: area.y + area.height - padding
-      }
-      break
-    case 'right-bottom':
+      };
+      break;
+    case "right-bottom":
       config.watermark.position = {
         x: area.x + area.width - padding,
         y: area.y + area.height - padding
-      }
-      break
+      };
+      break;
   }
 
-  updateWatermark()
-}
+  updateWatermark();
+};
 
 // 添加水印默认位置初始
 const initWatermarkPosition = () => {
-  if (!cropArea.value) return
+  if (!cropArea.value) return;
 
   // 设置水印位置为裁剪框中心
   config.watermark.position = {
     x: cropArea.value.x + cropArea.value.width / 2,
     y: cropArea.value.y + cropArea.value.height / 2
-  }
-}
-
+  };
+};
 
 // 分离水印绘制为独立方法
 const drawWatermark = () => {
-  if (!canvasRef.value || !config.watermark.text || !cropArea.value) return
+  if (!canvasRef.value || !config.watermark.text || !cropArea.value) return;
 
-  const ctx = canvasRef.value.getContext('2d')
-  const area = cropArea.value
+  const ctx = canvasRef.value.getContext("2d");
+  const area = cropArea.value;
 
   // 保存当前状态
-  ctx.save()
+  ctx.save();
 
   // 设置裁剪区域为裁剪框大小
-  ctx.beginPath()
-  ctx.rect(area.x, area.y, area.width, area.height)
-  ctx.clip()
+  ctx.beginPath();
+  ctx.rect(area.x, area.y, area.width, area.height);
+  ctx.clip();
 
   // 设置水印样式
-  ctx.font = `${config.watermark.size}px Arial`
+  ctx.font = `${config.watermark.size}px Arial`;
 
   // 处理颜色和透明度
-  const opacity = config.watermark.opacity / 100
-  if (config.watermark.color.startsWith('#')) {
-    const r = parseInt(config.watermark.color.slice(1, 3), 16)
-    const g = parseInt(config.watermark.color.slice(3, 5), 16)
-    const b = parseInt(config.watermark.color.slice(5, 7), 16)
-    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${opacity})`
+  const opacity = config.watermark.opacity / 100;
+  if (config.watermark.color.startsWith("#")) {
+    const r = parseInt(config.watermark.color.slice(1, 3), 16);
+    const g = parseInt(config.watermark.color.slice(3, 5), 16);
+    const b = parseInt(config.watermark.color.slice(5, 7), 16);
+    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${opacity})`;
   } else {
-    ctx.fillStyle = config.watermark.color.replace(/[\d.]+\)$/, `${opacity})`)
+    ctx.fillStyle = config.watermark.color.replace(/[\d.]+\)$/, `${opacity})`);
   }
 
-  if (config.watermark.mode === 'single') {
+  if (config.watermark.mode === "single") {
     // 单个水印
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
     ctx.fillText(
       config.watermark.text,
       config.watermark.position.x,
       config.watermark.position.y
-    )
+    );
   } else {
     // 满屏水印
-    ctx.textAlign = 'left'
-    ctx.textBaseline = 'top'
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
 
-    const textWidth = ctx.measureText(config.watermark.text).width
-    const gap = textWidth + 50
+    const textWidth = ctx.measureText(config.watermark.text).width;
+    const gap = textWidth + 50;
 
     // 设置旋转中心点为裁剪框中心
-    const centerX = area.x + area.width / 2
-    const centerY = area.y + area.height / 2
+    const centerX = area.x + area.width / 2;
+    const centerY = area.y + area.height / 2;
 
-    ctx.translate(centerX, centerY)
-    ctx.rotate(-30 * Math.PI / 180)
-    ctx.translate(-centerX, -centerY)
+    ctx.translate(centerX, centerY);
+    ctx.rotate((-30 * Math.PI) / 180);
+    ctx.translate(-centerX, -centerY);
 
     // 计算需要绘制的范围
-    const startX = area.x - gap
-    const startY = area.y - gap
-    const endX = area.x + area.width + gap
-    const endY = area.y + area.height + gap
+    const startX = area.x - gap;
+    const startY = area.y - gap;
+    const endX = area.x + area.width + gap;
+    const endY = area.y + area.height + gap;
 
     // 绘制水印网格
     for (let y = startY; y < endY; y += gap) {
       for (let x = startX; x < endX; x += gap) {
-        ctx.fillText(config.watermark.text, x, y)
+        ctx.fillText(config.watermark.text, x, y);
       }
     }
   }
 
   // 恢复状态
-  ctx.restore()
-}
+  ctx.restore();
+};
 
 // 修改更新水印方法
 const updateWatermark = () => {
   // 重绘图片和水印
   if (originalImage.value) {
-    handleCanvasDraw()
+    handleCanvasDraw();
   }
-}
-
-
+};
 
 // 修改尺寸修改处方法
 const handleSizeChange = (type, value) => {
-  if (!cropArea.value || !canvasRef.value) return
+  if (!cropArea.value || !canvasRef.value) return;
 
-  const canvas = canvasRef.value
-  const newValue = Math.round(parseInt(value)) // 确保是整数
+  const canvas = canvasRef.value;
+  const newValue = Math.round(parseInt(value)); // 确保是整数
 
-  if (isNaN(newValue)) return
+  if (isNaN(newValue)) return;
 
-  if (type === 'width') {
+  if (type === "width") {
     // 只限制最大宽度
-    const maxWidth = canvas.width - Math.round(cropArea.value.x)
-    cropArea.value.width = Math.round(Math.min(newValue, maxWidth))
+    const maxWidth = canvas.width - Math.round(cropArea.value.x);
+    cropArea.value.width = Math.round(Math.min(newValue, maxWidth));
 
     // 如果超出画布，调整位置
     if (cropArea.value.x + newValue > canvas.width) {
-      cropArea.value.x = Math.round(canvas.width - newValue)
+      cropArea.value.x = Math.round(canvas.width - newValue);
     }
-  } else if (type === 'height') {
+  } else if (type === "height") {
     // 只限制最大高度
-    const maxHeight = canvas.height - Math.round(cropArea.value.y)
-    cropArea.value.height = Math.round(Math.min(newValue, maxHeight))
+    const maxHeight = canvas.height - Math.round(cropArea.value.y);
+    cropArea.value.height = Math.round(Math.min(newValue, maxHeight));
 
     // 如果超出画布，调整位置
     if (cropArea.value.y + newValue > canvas.height) {
-      cropArea.value.y = Math.round(canvas.height - newValue)
+      cropArea.value.y = Math.round(canvas.height - newValue);
     }
   }
 
-  updateCropBoxPosition()
-
-}
-
-
+  updateCropBoxPosition();
+};
 
 // 修改位置控制方法
 const handlePositionChange = (axis, value) => {
-  if (!cropArea.value || !canvasRef.value) return
+  if (!cropArea.value || !canvasRef.value) return;
 
-  const newValue = Math.round(parseInt(value))
-  if (isNaN(newValue)) return
+  const newValue = Math.round(parseInt(value));
+  if (isNaN(newValue)) return;
 
-  const img = imagePosition.value
+  const img = imagePosition.value;
 
   // 直接使用相对坐标，不需要虑负值
-  if (axis === 'x') {
-    cropArea.value.x = img.x + Math.min(newValue, img.width - cropArea.value.width)
+  if (axis === "x") {
+    cropArea.value.x =
+      img.x + Math.min(newValue, img.width - cropArea.value.width);
   } else {
-    cropArea.value.y = img.y + Math.min(newValue, img.height - cropArea.value.height)
+    cropArea.value.y =
+      img.y + Math.min(newValue, img.height - cropArea.value.height);
   }
 
-  updateCropBoxPosition()
-}
+  updateCropBoxPosition();
+};
 
 // 修改快捷置处理方法
-const handleQuickPosition = (position) => {
-  if (!cropArea.value || !canvasRef.value) return
+const handleQuickPosition = position => {
+  if (!cropArea.value || !canvasRef.value) return;
 
-  const img = imagePosition.value
-  const area = cropArea.value
+  const img = imagePosition.value;
+  const area = cropArea.value;
 
   switch (position) {
-    case 'left-top':
-      area.x = img.x
-      area.y = img.y
-      break
-    case 'center-top':
-      area.x = img.x + (img.width - area.width) / 2
-      area.y = img.y
-      break
-    case 'right-top':
-      area.x = img.x + img.width - area.width
-      area.y = img.y
-      break
-    case 'center':
-      area.x = img.x + (img.width - area.width) / 2
-      area.y = img.y + (img.height - area.height) / 2
-      break
-    case 'left-bottom':
-      area.x = img.x
-      area.y = img.y + img.height - area.height
-      break
-    case 'center-bottom':
-      area.x = img.x + (img.width - area.width) / 2
-      area.y = img.y + img.height - area.height
-      break
-    case 'right-bottom':
-      area.x = img.x + img.width - area.width
-      area.y = img.y + img.height - area.height
-      break
+    case "left-top":
+      area.x = img.x;
+      area.y = img.y;
+      break;
+    case "center-top":
+      area.x = img.x + (img.width - area.width) / 2;
+      area.y = img.y;
+      break;
+    case "right-top":
+      area.x = img.x + img.width - area.width;
+      area.y = img.y;
+      break;
+    case "center":
+      area.x = img.x + (img.width - area.width) / 2;
+      area.y = img.y + (img.height - area.height) / 2;
+      break;
+    case "left-bottom":
+      area.x = img.x;
+      area.y = img.y + img.height - area.height;
+      break;
+    case "center-bottom":
+      area.x = img.x + (img.width - area.width) / 2;
+      area.y = img.y + img.height - area.height;
+      break;
+    case "right-bottom":
+      area.x = img.x + img.width - area.width;
+      area.y = img.y + img.height - area.height;
+      break;
   }
 
-  updateCropBoxPosition()
-}
-
+  updateCropBoxPosition();
+};
 
 // 监听 canvas 挂载
 onMounted(() => {
   if (originalImage.value) {
     nextTick(() => {
-      initCanvas(originalImage.value)
-    })
+      initCanvas(originalImage.value);
+    });
   }
-})
+});
 
 // 修改初始化画布方法
-const initCanvas = (image) => {
-  if (!canvasRef.value || !containerRef.value) return
+const initCanvas = image => {
+  if (!canvasRef.value || !containerRef.value) return;
 
-  const canvas = canvasRef.value
-  const container = containerRef.value
+  const canvas = canvasRef.value;
+  const container = containerRef.value;
 
   // 置画布大小
-  canvas.width = container.offsetWidth
-  canvas.height = container.offsetHeight
+  canvas.width = container.offsetWidth;
+  canvas.height = container.offsetHeight;
 
   // 绘制图片
-  const ctx = canvas.getContext('2d')
+  const ctx = canvas.getContext("2d");
 
   // 计算图片缩放和位置
   const scale = Math.min(
     canvas.width / image.width,
     canvas.height / image.height
-  )
+  );
 
-  const scaledWidth = image.width * scale
-  const scaledHeight = image.height * scale
-  const x = (canvas.width - scaledWidth) / 2
-  const y = (canvas.height - scaledHeight) / 2
+  const scaledWidth = image.width * scale;
+  const scaledHeight = image.height * scale;
+  const x = (canvas.width - scaledWidth) / 2;
+  const y = (canvas.height - scaledHeight) / 2;
 
   // 记录图片位置
   imagePosition.value = {
@@ -488,113 +510,115 @@ const initCanvas = (image) => {
     width: scaledWidth,
     height: scaledHeight,
     scale
-  }
+  };
 
   // 绘制图片
-  ctx.drawImage(
-    image,
-    x, y,
-    scaledWidth,
-    scaledHeight
-  )
+  ctx.drawImage(image, x, y, scaledWidth, scaledHeight);
 
   // 初始化裁剪框位置 - 居中显示，基于图片位置
-  const cropWidth = Math.min(scaledWidth * 0.8, canvas.width * 0.8)
-  const cropHeight = cropWidth * 9 / 16
+  const cropWidth = Math.min(scaledWidth * 0.8, canvas.width * 0.8);
+  const cropHeight = (cropWidth * 9) / 16;
 
   cropArea.value = {
-    x: x + (scaledWidth - cropWidth) / 2,  // 基于图片位置居中
+    x: x + (scaledWidth - cropWidth) / 2, // 基于图片位置居中
     y: y + (scaledHeight - cropHeight) / 2, // 基于图片位置居中
     width: cropWidth,
     height: cropHeight,
     isDragging: false,
     isResizing: false
-  }
+  };
 
   // 更新裁剪框位置
-  updateCropBoxPosition()
+  updateCropBoxPosition();
 
   // 初始化水印位置
-  initWatermarkPosition()
-}
+  initWatermarkPosition();
+};
 
 // 添加图片位置状态
-const imagePosition = ref({ x: 0, y: 0, width: 0, height: 0 })
+const imagePosition = ref({ x: 0, y: 0, width: 0, height: 0 });
 
-watch(() => imagePosition.value, (newVal) => {
-  console.log('imagePosition', newVal)
-})
+watch(
+  () => imagePosition.value,
+  newVal => {
+    console.log("imagePosition", newVal);
+  }
+);
 
 // 更新裁剪框位置
 const updateCropBoxPosition = () => {
-  if (!cropBoxRef.value) return
+  if (!cropBoxRef.value) return;
 
-  const area = cropArea.value
+  const area = cropArea.value;
   // 确保所有值都是整数
-  cropBoxRef.value.style.left = `${Math.round(area.x)}px`
-  cropBoxRef.value.style.top = `${Math.round(area.y)}px`
-  cropBoxRef.value.style.width = `${Math.round(area.width)}px`
-  cropBoxRef.value.style.height = `${Math.round(area.height)}px`
-}
+  cropBoxRef.value.style.left = `${Math.round(area.x)}px`;
+  cropBoxRef.value.style.top = `${Math.round(area.y)}px`;
+  cropBoxRef.value.style.width = `${Math.round(area.width)}px`;
+  cropBoxRef.value.style.height = `${Math.round(area.height)}px`;
+};
 
 // 修改裁剪框拖动处理
-const handleCropBoxMouseDown = (e) => {
-  if (['mosaic', 'brush'].includes(currentTool.value)) return // 马赛克和画笔模式下都禁止拖动裁剪框
+const handleCropBoxMouseDown = e => {
+  if (["mosaic", "brush"].includes(currentTool.value)) return; // 马赛克和画笔模式下都禁止拖动裁剪框
 
-  e.preventDefault()
-  cropArea.value.isDragging = true
+  e.preventDefault();
+  cropArea.value.isDragging = true;
 
-  const startX = e.clientX - cropArea.value.x
-  const startY = e.clientY - cropArea.value.y
+  const startX = e.clientX - cropArea.value.x;
+  const startY = e.clientY - cropArea.value.y;
 
-  const handleMouseMove = (e) => {
-    if (!cropArea.value.isDragging) return
+  const handleMouseMove = e => {
+    if (!cropArea.value.isDragging) return;
 
-    const newX = e.clientX - startX
-    const newY = e.clientY - startY
-    const canvas = canvasRef.value
+    const newX = e.clientX - startX;
+    const newY = e.clientY - startY;
+    const canvas = canvasRef.value;
 
     // 制在画布范围内
-    cropArea.value.x = Math.min(canvas.width - cropArea.value.width, Math.max(0, newX))
-    cropArea.value.y = Math.min(canvas.height - cropArea.value.height, Math.max(0, newY))
+    cropArea.value.x = Math.min(
+      canvas.width - cropArea.value.width,
+      Math.max(0, newX)
+    );
+    cropArea.value.y = Math.min(
+      canvas.height - cropArea.value.height,
+      Math.max(0, newY)
+    );
 
-    updateCropBoxPosition()
-  }
+    updateCropBoxPosition();
+  };
 
   const handleMouseUp = () => {
-    cropArea.value.isDragging = false
-    document.removeEventListener('mousemove', handleMouseMove)
-    document.removeEventListener('mouseup', handleMouseUp)
-  }
+    cropArea.value.isDragging = false;
+    document.removeEventListener("mousemove", handleMouseMove);
+    document.removeEventListener("mouseup", handleMouseUp);
+  };
 
-  document.addEventListener('mousemove', handleMouseMove)
-  document.addEventListener('mouseup', handleMouseUp)
-}
-
-
+  document.addEventListener("mousemove", handleMouseMove);
+  document.addEventListener("mouseup", handleMouseUp);
+};
 
 // 确认裁剪
 const confirmCrop = () => {
-  const canvas = document.createElement('canvas')
-  const ctx = canvas.getContext('2d')
-  const area = cropArea.value
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  const area = cropArea.value;
 
   // 设���输出画布大小
-  canvas.width = area.width
-  canvas.height = area.height
+  canvas.width = area.width;
+  canvas.height = area.height;
 
   // 先填充背景色
-  ctx.fillStyle = config.export.backgroundColor
-  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  ctx.fillStyle = config.export.backgroundColor;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   // 根据不同形状进行裁剪
-  ctx.beginPath()
+  ctx.beginPath();
   switch (cropShape.value) {
-    case 'circle':
-      const radius = Math.min(area.width, area.height) / 2
-      ctx.arc(area.width / 2, area.height / 2, radius, 0, Math.PI * 2)
-      break
-    case 'ellipse':
+    case "circle":
+      const radius = Math.min(area.width, area.height) / 2;
+      ctx.arc(area.width / 2, area.height / 2, radius, 0, Math.PI * 2);
+      break;
+    case "ellipse":
       ctx.ellipse(
         area.width / 2,
         area.height / 2,
@@ -603,195 +627,203 @@ const confirmCrop = () => {
         0,
         0,
         Math.PI * 2
-      )
-      break
-    default: // rect
-      ctx.rect(0, 0, area.width, area.height)
+      );
+      break;
+    default:
+      // rect
+      ctx.rect(0, 0, area.width, area.height);
   }
-  ctx.clip()
+  ctx.clip();
 
   // 计算图片在裁剪框中的相对位置
-  const img = imagePosition.value
-  const sourceX = Math.max(0, area.x - img.x)
-  const sourceY = Math.max(0, area.y - img.y)
-  const sourceWidth = Math.min(img.width - sourceX, area.width)
-  const sourceHeight = Math.min(img.height - sourceY, area.height)
+  const img = imagePosition.value;
+  const sourceX = Math.max(0, area.x - img.x);
+  const sourceY = Math.max(0, area.y - img.y);
+  const sourceWidth = Math.min(img.width - sourceX, area.width);
+  const sourceHeight = Math.min(img.height - sourceY, area.height);
 
   // 计算图片在画布上的绘制位置
-  const destX = Math.max(0, img.x - area.x)
-  const destY = Math.max(0, img.y - area.y)
+  const destX = Math.max(0, img.x - area.x);
+  const destY = Math.max(0, img.y - area.y);
 
   // 绘制图片
   ctx.drawImage(
     canvasRef.value,
-    sourceX + img.x, sourceY + img.y, sourceWidth, sourceHeight,
-    destX, destY, sourceWidth, sourceHeight
-  )
+    sourceX + img.x,
+    sourceY + img.y,
+    sourceWidth,
+    sourceHeight,
+    destX,
+    destY,
+    sourceWidth,
+    sourceHeight
+  );
 
   // 下裁剪后的图片
-  const link = document.createElement('a')
-  link.download = `cropped_${Date.now()}.png`
-  link.href = canvas.toDataURL()
-  link.click()
-}
+  const link = document.createElement("a");
+  link.download = `cropped_${Date.now()}.png`;
+  link.href = canvas.toDataURL();
+  link.click();
+};
 
 // 处控制点拖动
 const handleResizeMouseDown = (e, position) => {
-  e.preventDefault()
-  e.stopPropagation()
+  e.preventDefault();
+  e.stopPropagation();
 
-  cropArea.value.isResizing = true
-  const startX = e.clientX
-  const startY = e.clientY
-  const startWidth = cropArea.value.width
-  const startHeight = cropArea.value.height
-  const startLeft = cropArea.value.x
-  const startTop = cropArea.value.y
+  cropArea.value.isResizing = true;
+  const startX = e.clientX;
+  const startY = e.clientY;
+  const startWidth = cropArea.value.width;
+  const startHeight = cropArea.value.height;
+  const startLeft = cropArea.value.x;
+  const startTop = cropArea.value.y;
 
-  const handleMouseMove = (e) => {
-    if (!cropArea.value.isResizing) return
+  const handleMouseMove = e => {
+    if (!cropArea.value.isResizing) return;
 
-    const deltaX = e.clientX - startX
-    const deltaY = e.clientY - startY
-    const minSize = 50
-    const canvas = canvasRef.value
+    const deltaX = e.clientX - startX;
+    const deltaY = e.clientY - startY;
+    const minSize = 50;
+    const canvas = canvasRef.value;
 
-    let newX = cropArea.value.x
-    let newY = cropArea.value.y
-    let newWidth = cropArea.value.width
-    let newHeight = cropArea.value.height
+    let newX = cropArea.value.x;
+    let newY = cropArea.value.y;
+    let newWidth = cropArea.value.width;
+    let newHeight = cropArea.value.height;
 
     switch (position) {
-      case 'top-left':
+      case "top-left":
         if (deltaX < startWidth - minSize) {
           // 只处理左边界
-          newX = Math.max(0, startLeft + deltaX)
-          newWidth = startWidth - (newX - startLeft)
+          newX = Math.max(0, startLeft + deltaX);
+          newWidth = startWidth - (newX - startLeft);
         }
         if (deltaY < startHeight - minSize) {
           // 只处理上边界
-          newY = Math.max(0, startTop + deltaY)
-          newHeight = startHeight - (newY - startTop)
+          newY = Math.max(0, startTop + deltaY);
+          newHeight = startHeight - (newY - startTop);
         }
-        break
+        break;
 
-      case 'top-right':
+      case "top-right":
         if (startLeft + startWidth + deltaX <= canvas.width) {
           // 只处理右边界
-          newWidth = Math.max(minSize, startWidth + deltaX)
+          newWidth = Math.max(minSize, startWidth + deltaX);
         }
         if (deltaY < startHeight - minSize) {
           // 只处理边界
-          newY = Math.max(0, startTop + deltaY)
-          newHeight = startHeight - (newY - startTop)
+          newY = Math.max(0, startTop + deltaY);
+          newHeight = startHeight - (newY - startTop);
         }
-        break
+        break;
 
-      case 'bottom-left':
+      case "bottom-left":
         if (deltaX < startWidth - minSize) {
           // 只处理左边界
-          newX = Math.max(0, startLeft + deltaX)
-          newWidth = startWidth - (newX - startLeft)
+          newX = Math.max(0, startLeft + deltaX);
+          newWidth = startWidth - (newX - startLeft);
         }
         if (startTop + startHeight + deltaY <= canvas.height) {
           // 只理下边界
-          newHeight = Math.max(minSize, startHeight + deltaY)
+          newHeight = Math.max(minSize, startHeight + deltaY);
         }
-        break
+        break;
 
-      case 'bottom-right':
+      case "bottom-right":
         if (startLeft + startWidth + deltaX <= canvas.width) {
           // 只处理右边界
-          newWidth = Math.max(minSize, startWidth + deltaX)
+          newWidth = Math.max(minSize, startWidth + deltaX);
         }
         if (startTop + startHeight + deltaY <= canvas.height) {
           // 只处理下边界
-          newHeight = Math.max(minSize, startHeight + deltaY)
+          newHeight = Math.max(minSize, startHeight + deltaY);
         }
-        break
+        break;
 
-      case 'top':
+      case "top":
         if (deltaY < startHeight - minSize) {
-          newY = Math.max(0, startTop + deltaY)
-          newHeight = startHeight - (newY - startTop)
+          newY = Math.max(0, startTop + deltaY);
+          newHeight = startHeight - (newY - startTop);
         }
-        break
+        break;
 
-      case 'right':
+      case "right":
         if (startLeft + startWidth + deltaX <= canvas.width) {
-          newWidth = Math.max(minSize, startWidth + deltaX)
+          newWidth = Math.max(minSize, startWidth + deltaX);
         }
-        break
+        break;
 
-      case 'bottom':
+      case "bottom":
         if (startTop + startHeight + deltaY <= canvas.height) {
-          newHeight = Math.max(minSize, startHeight + deltaY)
+          newHeight = Math.max(minSize, startHeight + deltaY);
         }
-        break
+        break;
 
-      case 'left':
+      case "left":
         if (deltaX < startWidth - minSize) {
-          newX = Math.max(0, startLeft + deltaX)
-          newWidth = startWidth - (newX - startLeft)
+          newX = Math.max(0, startLeft + deltaX);
+          newWidth = startWidth - (newX - startLeft);
         }
-        break
+        break;
     }
 
-    cropArea.value.x = newX
-    cropArea.value.y = newY
-    cropArea.value.width = newWidth
-    cropArea.value.height = newHeight
+    cropArea.value.x = newX;
+    cropArea.value.y = newY;
+    cropArea.value.width = newWidth;
+    cropArea.value.height = newHeight;
 
-    updateCropBoxPosition()
-  }
+    updateCropBoxPosition();
+  };
 
   const handleMouseUp = () => {
-    cropArea.value.isResizing = false
-    document.removeEventListener('mousemove', handleMouseMove)
-    document.removeEventListener('mouseup', handleMouseUp)
-  }
+    cropArea.value.isResizing = false;
+    document.removeEventListener("mousemove", handleMouseMove);
+    document.removeEventListener("mouseup", handleMouseUp);
+  };
 
-  document.addEventListener('mousemove', handleMouseMove)
-  document.addEventListener('mouseup', handleMouseUp)
-}
+  document.addEventListener("mousemove", handleMouseMove);
+  document.addEventListener("mouseup", handleMouseUp);
+};
 
 // 添加工具相关状态
-const currentTool = ref(null)
-const isDrawing = ref(false)
-const lastPos = ref({ x: 0, y: 0 })
+const currentTool = ref(null);
+const isDrawing = ref(false);
+const lastPos = ref({ x: 0, y: 0 });
 
 // 修改切换工具方法
-const toggleTool = (tool) => {
-  console.log('toggleTool', tool, currentTool.value);
+const toggleTool = tool => {
+  console.log("toggleTool", tool, currentTool.value);
 
   if (currentTool.value === tool) {
-    currentTool.value = null
-    canvasRef.value.style.cursor = 'default'
-    cropBoxRef.value.style.pointerEvents = 'auto'
+    currentTool.value = null;
+    canvasRef.value.style.cursor = "default";
+    cropBoxRef.value.style.pointerEvents = "auto";
   } else {
-    currentTool.value = tool
-    if (['mosaic', 'brush'].includes(tool)) {  // 马赛克和画笔工具都需禁用裁剪框
-      console.log('来来没')
-      canvasRef.value.style.cursor = 'crosshair'
-      cropBoxRef.value.style.pointerEvents = 'none'
+    currentTool.value = tool;
+    if (["mosaic", "brush"].includes(tool)) {
+      // 马赛克和画笔工具都需禁用裁剪框
+      console.log("来来没");
+      canvasRef.value.style.cursor = "crosshair";
+      cropBoxRef.value.style.pointerEvents = "none";
 
       // 设置画笔样式
-      if (tool === 'brush') {
-        const ctx = canvasRef.value.getContext('2d')
-        ctx.strokeStyle = brushColor.value
-        ctx.lineWidth = brushSize.value
-        ctx.lineCap = 'round'
-        ctx.lineJoin = 'round'
+      if (tool === "brush") {
+        const ctx = canvasRef.value.getContext("2d");
+        ctx.strokeStyle = brushColor.value;
+        ctx.lineWidth = brushSize.value;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
       }
     }
   }
-}
+};
 
 // 修改检查点是否在裁剪区域内的方法
 const isPointInCropArea = (x, y) => {
-  const area = cropArea.value
-  const image = imagePosition.value
-  const mosaicSize = 10 // 马赛克块大小
+  const area = cropArea.value;
+  const image = imagePosition.value;
+  const mosaicSize = 10; // 马赛克块大小
 
   // 考虑马赛克块大小的边界检查
   return (
@@ -799,100 +831,104 @@ const isPointInCropArea = (x, y) => {
     x <= area.x + area.width &&
     y >= area.y &&
     y <= area.y + area.height &&
-    x >= image.x + mosaicSize/2 &&
-    x <= image.x + image.width - mosaicSize/2 &&
-    y >= image.y + mosaicSize/2 &&
-    y <= image.y + image.height - mosaicSize/2
-  )
-}
+    x >= image.x + mosaicSize / 2 &&
+    x <= image.x + image.width - mosaicSize / 2 &&
+    y >= image.y + mosaicSize / 2 &&
+    y <= image.y + image.height - mosaicSize / 2
+  );
+};
 
 // 修改马赛克绘制方法
 const drawMosaic = (x, y) => {
-  if (!isPointInCropArea(x, y)) return
+  if (!isPointInCropArea(x, y)) return;
 
-  const ctx = canvasRef.value.getContext('2d')
-  const size = 10 // 马赛克块大小
+  const ctx = canvasRef.value.getContext("2d");
+  const size = 10; // 马赛克块大小
 
   // 获取起点和终点之间的所有点
-  const points = getLinePoints(lastPos.value.x, lastPos.value.y, x, y)
+  const points = getLinePoints(lastPos.value.x, lastPos.value.y, x, y);
 
   // 过滤掉靠近边缘的点
   const validPoints = points.filter(point => {
-    const img = imagePosition.value
+    const img = imagePosition.value;
     return (
-      point.x >= img.x + size/2 &&
-      point.x <= img.x + img.width - size/2 &&
-      point.y >= img.y + size/2 &&
-      point.y <= img.y + img.height - size/2
-    )
-  })
+      point.x >= img.x + size / 2 &&
+      point.x <= img.x + img.width - size / 2 &&
+      point.y >= img.y + size / 2 &&
+      point.y <= img.y + img.height - size / 2
+    );
+  });
 
-  drawMosaicOperation(ctx, size, validPoints)
+  drawMosaicOperation(ctx, size, validPoints);
 
   // 保存马赛克操作
   const len = drawHistory.value.length;
   drawHistory.value[len - 1].data.push({
     size: size,
     points: validPoints
-  })
-}
+  });
+};
 // 制马赛克
 const drawMosaicOperation = (ctx, size, points) => {
   points.forEach(point => {
-    if (!isPointInCropArea(point.x, point.y)) return
+    if (!isPointInCropArea(point.x, point.y)) return;
 
     // 对齐到网格
-    const gridX = Math.floor(point.x / size) * size
-    const gridY = Math.floor(point.y / size) * size
+    const gridX = Math.floor(point.x / size) * size;
+    const gridY = Math.floor(point.y / size) * size;
 
     // 获取区域的平均颜色
-    const imageData = ctx.getImageData(gridX, gridY, size, size)
-    const color = getAverageColor(imageData.data)
+    const imageData = ctx.getImageData(gridX, gridY, size, size);
+    const color = getAverageColor(imageData.data);
 
     // 填充马赛克块
-    ctx.fillStyle = `rgb(${color.r}, ${color.g}, ${color.b})`
-    ctx.fillRect(gridX, gridY, size, size)
-  })
-}
+    ctx.fillStyle = `rgb(${color.r}, ${color.g}, ${color.b})`;
+    ctx.fillRect(gridX, gridY, size, size);
+  });
+};
 
 // 恢复马赛克和画笔
 const restoreToolsOperations = () => {
-  const ctx = canvasRef.value.getContext('2d')
+  const ctx = canvasRef.value.getContext("2d");
 
   drawHistory.value.forEach(item => {
-    if (item.type === 'mosaic') {
+    if (item.type === "mosaic") {
       item.data.forEach(data => {
-        drawMosaicOperation(ctx, data.size, data.points)
-      })
-    } else if (item.type === 'brush') {
+        drawMosaicOperation(ctx, data.size, data.points);
+      });
+    } else if (item.type === "brush") {
       item.data.forEach(data => {
-        drawBrushOperation(ctx, data.points)
-      })
+        drawBrushOperation(ctx, data.points);
+      });
     }
-  })
-}
+  });
+};
 
 // 修改画笔绘制方法
 const drawBrush = (x, y) => {
-  if (!isPointInCropArea(x, y)) return
+  if (!isPointInCropArea(x, y)) return;
   // 在绘制前保存当前状态
   // if (!lastPos.value.x && !lastPos.value.y) {
   //   saveDrawState()
   // }
-  const ctx = canvasRef.value.getContext('2d')
+  const ctx = canvasRef.value.getContext("2d");
 
   // 使用裁剪区域限制绘制范围
   // ctx.save()
-  ctx.beginPath()
-  ctx.rect(cropArea.value.x, cropArea.value.y, cropArea.value.width, cropArea.value.height)
-  ctx.clip()
+  ctx.beginPath();
+  ctx.rect(
+    cropArea.value.x,
+    cropArea.value.y,
+    cropArea.value.width,
+    cropArea.value.height
+  );
+  ctx.clip();
   drawBrushOperation(ctx, {
     x1: lastPos.value.x,
     y1: lastPos.value.y,
     x2: x,
     y2: y
-  })
-
+  });
 
   // ctx.restore()
 
@@ -906,251 +942,251 @@ const drawBrush = (x, y) => {
       x2: x,
       y2: y
     }
-  })
-}
+  });
+};
 // 绘制画笔操作
 const drawBrushOperation = (ctx, point) => {
   // 绘制线条
-  ctx.beginPath()
-  ctx.moveTo(point.x1, point.y1)
-  ctx.lineTo(point.x2, point.y2)
-  ctx.strokeStyle = brushColor.value
-  ctx.lineWidth = brushSize.value
-  ctx.lineCap = 'round'
-  ctx.lineJoin = 'round'
-  ctx.stroke()
-}
+  ctx.beginPath();
+  ctx.moveTo(point.x1, point.y1);
+  ctx.lineTo(point.x2, point.y2);
+  ctx.strokeStyle = brushColor.value;
+  ctx.lineWidth = brushSize.value;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.stroke();
+};
 
 // 鼠标按下
-const handleCanvasMouseDown = (e) => {
-  if (!currentTool.value || !['mosaic', 'brush'].includes(currentTool.value)) return
+const handleCanvasMouseDown = e => {
+  if (!currentTool.value || !["mosaic", "brush"].includes(currentTool.value))
+    return;
 
-  const rect = canvasRef.value.getBoundingClientRect()
-  const x = e.clientX - rect.left
-  const y = e.clientY - rect.top
+  const rect = canvasRef.value.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
 
   // 检查起始点是否在裁剪框内
-  if (!isPointInCropArea(x, y)) return
+  if (!isPointInCropArea(x, y)) return;
 
-  isDrawing.value = true
-  lastPos.value = { x, y }
+  isDrawing.value = true;
+  lastPos.value = { x, y };
   // 开始绘制前保存状态
-  saveDrawState()
+  saveDrawState();
   // 开始新的路径
-  if (currentTool.value === 'brush') {
+  if (currentTool.value === "brush") {
     drawBrush(x, y);
-  } else if (currentTool.value === 'mosaic') {
-    drawMosaic(x, y)
+  } else if (currentTool.value === "mosaic") {
+    drawMosaic(x, y);
   }
-}
+};
 
 // 鼠标移动
-const handleCanvasMouseMove = (e) => {
-  if (!isDrawing.value || !currentTool.value) return
+const handleCanvasMouseMove = e => {
+  if (!isDrawing.value || !currentTool.value) return;
 
-  const rect = canvasRef.value.getBoundingClientRect()
-  const x = e.clientX - rect.left
-  const y = e.clientY - rect.top
+  const rect = canvasRef.value.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
 
-  if (currentTool.value === 'brush') {
-    drawBrush(x, y)
-  } else if (currentTool.value === 'mosaic') {
-    drawMosaic(x, y)
+  if (currentTool.value === "brush") {
+    drawBrush(x, y);
+  } else if (currentTool.value === "mosaic") {
+    drawMosaic(x, y);
   }
 
-  lastPos.value = { x, y }
-}
+  lastPos.value = { x, y };
+};
 
 // 鼠标抬起
 const handleCanvasMouseUp = () => {
-  isDrawing.value = false
-  console.log('drawHistory', drawHistory.value)
-}
+  isDrawing.value = false;
+  console.log("drawHistory", drawHistory.value);
+};
 
 // 获取两点之间的所有点
 const getLinePoints = (x1, y1, x2, y2) => {
-  const points = []
-  const dx = Math.abs(x2 - x1)
-  const dy = Math.abs(y2 - y1)
-  const sx = x1 < x2 ? 1 : -1
-  const sy = y1 < y2 ? 1 : -1
-  let err = dx - dy
+  const points = [];
+  const dx = Math.abs(x2 - x1);
+  const dy = Math.abs(y2 - y1);
+  const sx = x1 < x2 ? 1 : -1;
+  const sy = y1 < y2 ? 1 : -1;
+  let err = dx - dy;
 
-  let x = x1
-  let y = y1
+  let x = x1;
+  let y = y1;
 
   while (true) {
-    points.push({ x, y })
-    if (x === x2 && y === y2) break
-    const e2 = 2 * err
+    points.push({ x, y });
+    if (x === x2 && y === y2) break;
+    const e2 = 2 * err;
     if (e2 > -dy) {
-      err -= dy
-      x += sx
+      err -= dy;
+      x += sx;
     }
     if (e2 < dx) {
-      err += dx
-      y += sy
+      err += dx;
+      y += sy;
     }
   }
 
-  return points
-}
+  return points;
+};
 
 // 获区域平均颜色
-const getAverageColor = (data) => {
-  let r = 0, g = 0, b = 0
-  const count = data.length / 4
+const getAverageColor = data => {
+  let r = 0,
+    g = 0,
+    b = 0;
+  const count = data.length / 4;
 
   for (let i = 0; i < data.length; i += 4) {
-    r += data[i]
-    g += data[i + 1]
-    b += data[i + 2]
+    r += data[i];
+    g += data[i + 1];
+    b += data[i + 2];
   }
 
   return {
     r: Math.round(r / count),
     g: Math.round(g / count),
     b: Math.round(b / count)
-  }
-}
-
-
-
-
+  };
+};
 
 // 添加保存历史记录的方法
 const saveDrawState = () => {
-  if (!canvasRef.value) return
+  if (!canvasRef.value) return;
 
   // 保存状态是保存数据
   drawHistory.value.push({
     type: currentTool.value,
     data: []
-  })
-}
+  });
+};
 
 // 修改撤销方法
 const undoDraw = () => {
-  if (!drawHistory.value.length || !canvasRef.value) return
+  if (!drawHistory.value.length || !canvasRef.value) return;
 
   // 获取当前状态并保存到恢复历史
-  const previousState = drawHistory.value.pop()
+  const previousState = drawHistory.value.pop();
 
-  console.log('previousState', previousState)
-  redoHistory.value.push(previousState)
+  console.log("previousState", previousState);
+  redoHistory.value.push(previousState);
 
   // 恢复马赛克和画笔
-  const ctx = canvasRef.value.getContext('2d')
-  ctx.clearRect(0, 0, canvasRef.value.width, canvasRef.value.height)
+  const ctx = canvasRef.value.getContext("2d");
+  ctx.clearRect(0, 0, canvasRef.value.width, canvasRef.value.height);
 
   // 重新绘制原图
-  handleCanvasDraw()
-}
+  handleCanvasDraw();
+};
 
 // 添加恢复方法
 const redoDraw = () => {
-  if (!redoHistory.value.length || !canvasRef.value) return
+  if (!redoHistory.value.length || !canvasRef.value) return;
   // 获取下一个状态
-  const nextState = redoHistory.value.pop()
+  const nextState = redoHistory.value.pop();
   // 获取当前状态并保存到撤销历史
-  drawHistory.value.push(nextState)
+  drawHistory.value.push(nextState);
   // 恢复马赛克和画笔
   // 清除上面的马赛克
-  const ctx = canvasRef.value.getContext('2d')
-  ctx.clearRect(0, 0, canvasRef.value.width, canvasRef.value.height)
+  const ctx = canvasRef.value.getContext("2d");
+  ctx.clearRect(0, 0, canvasRef.value.width, canvasRef.value.height);
 
   // 重新绘制原图
-  handleCanvasDraw()
-
-
-}
+  handleCanvasDraw();
+};
 
 // 修改键快捷键支持
 onMounted(() => {
-  window.addEventListener('keydown', (e) => {
+  window.addEventListener("keydown", e => {
     // Ctrl+Z 撤销
-    if (e.ctrlKey && !e.shiftKey && e.key === 'z') {
-      e.preventDefault()
-      undoDraw()
+    if (e.ctrlKey && !e.shiftKey && e.key === "z") {
+      e.preventDefault();
+      undoDraw();
     }
     // Ctrl+Shift+Z 或 Ctrl+Y 恢复
-    if ((e.ctrlKey && e.shiftKey && e.key === 'z') || (e.ctrlKey && e.key === 'y')) {
-      e.preventDefault()
-      redoDraw()
+    if (
+      (e.ctrlKey && e.shiftKey && e.key === "z") ||
+      (e.ctrlKey && e.key === "y")
+    ) {
+      e.preventDefault();
+      redoDraw();
     }
-  })
-})
+  });
+});
 
 onMounted(() => {
-  window.addEventListener('paste', handlePaste)
-})
+  window.addEventListener("paste", handlePaste);
+});
 
 onUnmounted(() => {
-  window.removeEventListener('paste', handlePaste)
-})
+  window.removeEventListener("paste", handlePaste);
+});
 
 // 处理粘贴事件
-const handlePaste = (event) => {
-  const items = event.clipboardData.items
+const handlePaste = event => {
+  const items = event.clipboardData.items;
   for (let i = 0; i < items.length; i++) {
-    const item = items[i]
-    if (item.type.startsWith('image/')) {
-      const file = item.getAsFile()
-      const reader = new FileReader()
-      reader.onload = (e) => {
+    const item = items[i];
+    if (item.type.startsWith("image/")) {
+      const file = item.getAsFile();
+      const reader = new FileReader();
+      reader.onload = e => {
         // 将图像数据放置在预览区
-        const img = new Image()
+        const img = new Image();
         img.onload = () => {
-          originalImage.value = img
+          originalImage.value = img;
           // 这里可以调用绘制函数
           nextTick(() => {
-            initCanvas(img)
-          })
-        }
-        img.src = e.target.result
-      }
-      reader.readAsDataURL(file)
+            initCanvas(img);
+          });
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
     }
   }
-}
+};
 
 // 修改形状切换处理方法
-const handleShapeChange = (shape) => {
-  const area = cropArea.value
-  cropShape.value = shape
-  
+const handleShapeChange = shape => {
+  const area = cropArea.value;
+  cropShape.value = shape;
+
   // 只在切换到圆形时进行调整
-  if (shape === 'circle') {
+  if (shape === "circle") {
     // 圆形需要保持正方形，以较小边为基准
-    const size = Math.min(area.width, area.height)
+    const size = Math.min(area.width, area.height);
     // 调整位置使其居中
-    area.x += (area.width - size) / 2
-    area.y += (area.height - size) / 2
-    area.width = size
-    area.height = size
+    area.x += (area.width - size) / 2;
+    area.y += (area.height - size) / 2;
+    area.width = size;
+    area.height = size;
   }
   // 切换到矩形时不需要特殊处理
-  
-  updateCropBoxPosition()
-}
+
+  updateCropBoxPosition();
+};
 
 // 添加配置管理相关的状态和方法
-const savedConfigs = ref([])
-const currentConfigName = ref('')
+const savedConfigs = ref([]);
+const currentConfigName = ref("");
 
 // 从 localStorage 加载配置
 const loadConfigs = () => {
-  const configs = localStorage.getItem('imageEditorConfigs')
+  const configs = localStorage.getItem("imageEditorConfigs");
   if (configs) {
-    savedConfigs.value = JSON.parse(configs)
+    savedConfigs.value = JSON.parse(configs);
   }
-}
+};
 
 // 保存配置到 localStorage
-const saveConfig = (name) => {
+const saveConfig = name => {
   if (!name) {
-    ElMessage.warning('请输入配置名称')
-    return
+    ElMessage.warning("请输入配置名称");
+    return;
   }
 
   const newConfig = {
@@ -1162,167 +1198,202 @@ const saveConfig = (name) => {
       watermark: { ...config.watermark },
       export: { ...config.export }
     }
-  }
+  };
 
-  const index = savedConfigs.value.findIndex(c => c.name === name)
+  const index = savedConfigs.value.findIndex(c => c.name === name);
   if (index !== -1) {
-    savedConfigs.value[index] = newConfig
+    savedConfigs.value[index] = newConfig;
   } else {
-    savedConfigs.value.push(newConfig)
+    savedConfigs.value.push(newConfig);
   }
 
-  localStorage.setItem('imageEditorConfigs', JSON.stringify(savedConfigs.value))
-  currentConfigName.value = ''
-  ElMessage.success('配置保存成功')
-}
+  localStorage.setItem(
+    "imageEditorConfigs",
+    JSON.stringify(savedConfigs.value)
+  );
+  currentConfigName.value = "";
+  ElMessage.success("配置保存成功");
+};
 
 // 应用配置
-const applyConfig = (configData) => {
-  config.rotateAngle = configData.rotateAngle
-  config.scale = configData.scale
-  config.watermark = { ...config.watermark, ...configData.watermark }
-  config.export = { ...config.export, ...configData.export }
-  
+const applyConfig = configData => {
+  config.rotateAngle = configData.rotateAngle;
+  config.scale = configData.scale;
+  config.watermark = { ...config.watermark, ...configData.watermark };
+  config.export = { ...config.export, ...configData.export };
+
   // 更新画布
-  handleCanvasDraw()
-  ElMessage.success('配置应用成功')
-}
+  handleCanvasDraw();
+  ElMessage.success("配置应用成功");
+};
 
 // 删除配置
-const deleteConfig = (name) => {
-  savedConfigs.value = savedConfigs.value.filter(c => c.name !== name)
-  localStorage.setItem('imageEditorConfigs', JSON.stringify(savedConfigs.value))
-  ElMessage.success('配置删除成功')
-}
+const deleteConfig = name => {
+  savedConfigs.value = savedConfigs.value.filter(c => c.name !== name);
+  localStorage.setItem(
+    "imageEditorConfigs",
+    JSON.stringify(savedConfigs.value)
+  );
+  ElMessage.success("配置删除成功");
+};
 
 // 在组件挂载时加载配置
 onMounted(() => {
-  loadConfigs()
-})
+  loadConfigs();
+});
 
 // ���理文件夹选择
-const folderInput = ref(null)
-const handleFolderChange = (e) => {
-  const files = Array.from(e.target.files).filter(file => 
-    file.type.startsWith('image/')
-  )
-  
+const folderInput = ref(null);
+const handleFolderChange = e => {
+  const files = Array.from(e.target.files).filter(file =>
+    file.type.startsWith("image/")
+  );
+
   files.forEach(file => {
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const img = new Image()
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        imageFiles.value.push({
+          key: nanoid(),
+          name: file.name,
+          url: e.target.result,
+          timestamp: Date.now(),
+          image: img,
+          path: file.webkitRelativePath || file.name, // 保存文件路径
+          config: deepClone(defaultConfig)
+        });
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  // 清空输入，以便可以重复选择同一文件夹
+  e.target.value = "";
+};
+
+// 添加文件选择方法
+const selectFile = key => {
+  // 先保存就配置到到imageFiles中
+  const oldFile = imageFiles.value.find(file => file.key === currentFileIndex.value);
+  if (oldFile) {
+    oldFile.config = deepClone(config.value);
+  }
+  currentFileIndex.value = key;
+  const file = imageFiles.value.find(file => file.key === key);
+  config.value = deepClone(file.config);
+  originalImage.value = file.image;
+  
+  nextTick(() => {
+  console.log('originalImage',originalImage.value);
+
+    // if (originalImage.value) {
+    //   originalImage.value = file.image;
+    //   handleCanvasDraw();
+    // }else{
+
+      initCanvas(file.image);
+
+    // }
+
+  });
+};
+
+// 添加文件删除方法
+const removeFile = key => {
+  // 如果删除的是当前选中的文件，清空预览
+  const index = imageFiles.value.findIndex(file => file.key === key);
+  if (key === currentFileIndex.value) {
+    originalImage.value = null;
+    currentFileIndex.value = -1;
+  }
+  imageFiles.value.splice(index, 1);
+};
+
+// 修改上传区域��显示条件
+const showUploadArea = computed(() => {
+  return !originalImage.value || imageFiles.value.length === 0;
+});
+
+// 添加文件拖拽处理方法
+const handleFileDrop = e => {
+  const files = Array.from(e.dataTransfer.files).filter(file =>
+    file.type.startsWith("image/")
+  );
+
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
       img.onload = () => {
         imageFiles.value.push({
           name: file.name,
           url: e.target.result,
           timestamp: Date.now(),
           image: img,
-          path: file.webkitRelativePath || file.name // 保存文件路径
-        })
-      }
-      img.src = e.target.result
-    }
-    reader.readAsDataURL(file)
-  })
-  
-  // 清空输入，以便可以重复选择同一文件夹
-  e.target.value = ''
-}
-
-// 添加文件选择方法
-const selectFile = (index) => {
-  currentFileIndex.value = index
-  const file = imageFiles.value[index]
-  originalImage.value = file.image
-  nextTick(() => {
-    initCanvas(file.image)
-  })
-}
-
-// 添加文件删除方法
-const removeFile = (index) => {
-  // 如果删除的是当前选中的文件，清空预览
-  if (index === currentFileIndex.value) {
-    originalImage.value = null
-    currentFileIndex.value = -1
-  } else if (index < currentFileIndex.value) {
-    // 如果删除的文件在当前选中文件之前，更新索引
-    currentFileIndex.value--
-  }
-  imageFiles.value.splice(index, 1)
-}
-
-// 修改上传区域��显示条件
-const showUploadArea = computed(() => {
-  return !originalImage.value || imageFiles.value.length === 0
-})
-
-// 添加文件拖拽处理方法
-const handleFileDrop = (e) => {
-  const files = Array.from(e.dataTransfer.files).filter(file => 
-    file.type.startsWith('image/')
-  )
-  
-  files.forEach(file => {
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const img = new Image()
-      img.onload = () => {
-        imageFiles.value.push({
-          name: file.name,
-          url: e.target.result,
-          timestamp: Date.now(),
-          image: img
-        })
-      }
-      img.src = e.target.result
-    }
-    reader.readAsDataURL(file)
-  })
-}
+          key: nanoid(),
+          config: deepClone(defaultConfig)
+        });
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+};
 
 // 修改上传区域点击处理方法
 const handleUploadClick = () => {
   // 切换到文件导航
-  currentNav.value = 'files'
-}
+  currentNav.value = "files";
+};
 
 // 修改文件选择处理方法
-const handleFileChange = (e) => {
-  const files = Array.from(e.target.files)
-  currentNav.value = 'files'
+const handleFileChange = e => {
+  const files = Array.from(e.target.files);
+  currentNav.value = "files";
   files.forEach(file => {
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const img = new Image()
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
       img.onload = () => {
         imageFiles.value.push({
+          key: nanoid(),
           name: file.name,
           url: e.target.result,
           timestamp: Date.now(),
-          image: img
-        })
-      }
-      img.src = e.target.result
-    }
-    reader.readAsDataURL(file)
-  })
+          image: img,
+          config: deepClone(defaultConfig)
+        });
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
   // 清空输入，以便可以重复选择同一文件
-  e.target.value = ''
-}
+  e.target.value = "";
+};
 
 // 修改文件输入框的引用名称
-const uploadInput = ref(null)
+const uploadInput = ref(null);
 </script>
 
 <template>
   <div class="container">
     <!-- 左侧导航 -->
     <div class="nav-panel">
-      <div class="nav-item" :class="{ active: currentNav === 'files' }" @click="currentNav = 'files'">
+      <div
+        class="nav-item"
+        :class="{ active: currentNav === 'files' }"
+        @click="currentNav = 'files'"
+      >
         <Folder style="width: 1em; height: 1em;"></Folder>
       </div>
-      <div class="nav-item" :class="{ active: currentNav === 'configs' }" @click="currentNav = 'configs'">
+      <div
+        class="nav-item"
+        :class="{ active: currentNav === 'configs' }"
+        @click="currentNav = 'configs'"
+      >
         <Setting style="width: 1em; height: 1em;"></Setting>
       </div>
     </div>
@@ -1335,10 +1406,14 @@ const uploadInput = ref(null)
           <h3>文件列表</h3>
           <div class="header-actions">
             <el-button size="small" @click="$refs.fileInput.click()">
-              <el-icon><Plus /></el-icon>添加文件
+              <el-icon>
+                <Plus />
+              </el-icon>添加文件
             </el-button>
             <el-button size="small" @click="$refs.folderInput.click()">
-              <el-icon><Folder /></el-icon>添加文件夹
+              <el-icon>
+                <Folder />
+              </el-icon>添加文件夹
             </el-button>
             <!-- 添加隐藏的文件夹输入 -->
             <input
@@ -1349,7 +1424,7 @@ const uploadInput = ref(null)
               style="display: none"
               webkitdirectory
               multiple
-            >
+            />
             <!-- 添加文件输入框 -->
             <input
               ref="fileInput"
@@ -1358,28 +1433,32 @@ const uploadInput = ref(null)
               @change="handleFileChange"
               style="display: none"
               multiple
-            >
+            />
           </div>
         </div>
         <div class="list-content">
-          <div v-for="(file, index) in imageFiles" 
-               :key="index"
-               class="list-item"
-               :class="{ active: currentFileIndex === index }"
-               @click="selectFile(index)">
-            <img :src="file.url" class="item-thumb">
+          <div
+            v-for="file in imageFiles"
+            :key="file.key"
+            class="list-item"
+            :class="{ active: currentFileIndex === file.key }"
+            @click="selectFile(file.key)"
+          >
+            <img :src="file.url" class="item-thumb" />
             <div class="item-info">
               <span class="item-name">{{ file.name }}</span>
               <span class="item-time">{{ new Date(file.timestamp).toLocaleString() }}</span>
             </div>
-            <el-button 
-              type="danger" 
-              size="small" 
+            <el-button
+              type="danger"
+              size="small"
               circle
-              @click.stop="removeFile(index)"
+              @click.stop="removeFile(file.key)"
               style="width: 2.2em;"
             >
-              <el-icon><Delete /></el-icon>
+              <el-icon>
+                <Delete />
+              </el-icon>
             </el-button>
           </div>
         </div>
@@ -1398,9 +1477,7 @@ const uploadInput = ref(null)
           </div>
         </div>
         <div class="list-content">
-          <div v-for="cfg in savedConfigs" 
-               :key="cfg.name" 
-               class="list-item">
+          <div v-for="cfg in savedConfigs" :key="cfg.name" class="list-item">
             <div class="item-info">
               <span class="item-name">{{ cfg.name }}</span>
               <span class="item-time">{{ new Date(cfg.timestamp).toLocaleString() }}</span>
@@ -1419,10 +1496,12 @@ const uploadInput = ref(null)
       <!-- 编辑器容器 -->
       <div ref="containerRef" class="editor-container">
         <!-- 修改上传区域部分 -->
-        <div v-if="showUploadArea" 
-             class="upload-area" 
-             @dragover.prevent 
-             @drop.prevent="handleFileDrop">
+        <div
+          v-if="showUploadArea"
+          class="upload-area"
+          @dragover.prevent
+          @drop.prevent="handleFileDrop"
+        >
           <input
             ref="uploadInput"
             type="file"
@@ -1431,11 +1510,18 @@ const uploadInput = ref(null)
             class="file-input"
             id="upload-input"
             multiple
-          >
+          />
           <label for="upload-input" class="upload-content" @click="handleUploadClick">
             <div class="upload-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" stroke-width="2">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="48"
+                height="48"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
                 <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7" />
                 <polyline points="17 8 12 3 7 8" />
                 <line x1="12" y1="3" x2="12" y2="15" />
@@ -1450,12 +1536,20 @@ const uploadInput = ref(null)
         </div>
 
         <template v-else>
-          <canvas ref="canvasRef" class="editor-canvas" :class="{ drawing: isDrawing }"
-            @mousedown="handleCanvasMouseDown" @mousemove="handleCanvasMouseMove" @mouseup="handleCanvasMouseUp"
-            @mouseleave="handleCanvasMouseUp"></canvas>
+          <canvas
+            ref="canvasRef"
+            class="editor-canvas"
+            :class="{ drawing: isDrawing }"
+            @mousedown="handleCanvasMouseDown"
+            @mousemove="handleCanvasMouseMove"
+            @mouseup="handleCanvasMouseUp"
+            @mouseleave="handleCanvasMouseUp"
+          ></canvas>
 
           <!-- 裁剪框 -->
-          <div ref="cropBoxRef" class="crop-box" 
+          <div
+            ref="cropBoxRef"
+            class="crop-box"
             :data-shape="cropShape"
             @mousedown="handleCropBoxMouseDown"
             :style="{ 
@@ -1463,18 +1557,37 @@ const uploadInput = ref(null)
             }"
           >
             <!-- 四角的控制点 -->
-            <div class="resize-handle corner top-left" @mousedown="(e) => handleResizeMouseDown(e, 'top-left')"></div>
-            <div class="resize-handle corner top-right" @mousedown="(e) => handleResizeMouseDown(e, 'top-right')"></div>
-            <div class="resize-handle corner bottom-left" @mousedown="(e) => handleResizeMouseDown(e, 'bottom-left')">
-            </div>
-            <div class="resize-handle corner bottom-right" @mousedown="(e) => handleResizeMouseDown(e, 'bottom-right')">
-            </div>
+            <div
+              class="resize-handle corner top-left"
+              @mousedown="(e) => handleResizeMouseDown(e, 'top-left')"
+            ></div>
+            <div
+              class="resize-handle corner top-right"
+              @mousedown="(e) => handleResizeMouseDown(e, 'top-right')"
+            ></div>
+            <div
+              class="resize-handle corner bottom-left"
+              @mousedown="(e) => handleResizeMouseDown(e, 'bottom-left')"
+            ></div>
+            <div
+              class="resize-handle corner bottom-right"
+              @mousedown="(e) => handleResizeMouseDown(e, 'bottom-right')"
+            ></div>
 
             <!-- 边的中点控制点 -->
             <div class="resize-handle edge top" @mousedown="(e) => handleResizeMouseDown(e, 'top')"></div>
-            <div class="resize-handle edge right" @mousedown="(e) => handleResizeMouseDown(e, 'right')"></div>
-            <div class="resize-handle edge bottom" @mousedown="(e) => handleResizeMouseDown(e, 'bottom')"></div>
-            <div class="resize-handle edge left" @mousedown="(e) => handleResizeMouseDown(e, 'left')"></div>
+            <div
+              class="resize-handle edge right"
+              @mousedown="(e) => handleResizeMouseDown(e, 'right')"
+            ></div>
+            <div
+              class="resize-handle edge bottom"
+              @mousedown="(e) => handleResizeMouseDown(e, 'bottom')"
+            ></div>
+            <div
+              class="resize-handle edge left"
+              @mousedown="(e) => handleResizeMouseDown(e, 'left')"
+            ></div>
           </div>
         </template>
       </div>
@@ -1482,36 +1595,51 @@ const uploadInput = ref(null)
       <!-- 底部工具栏 -->
       <div v-if="originalImage" class="bottom-toolbar">
         <el-tooltip content="马赛克" placement="top">
-          <div class="tool-item" :class="{ active: currentTool === 'mosaic' }" @click="toggleTool('mosaic')">
-            <img :src="msk" alt="马赛克" style="width: 1em; height: 1em;">
+          <div
+            class="tool-item"
+            :class="{ active: currentTool === 'mosaic' }"
+            @click="toggleTool('mosaic')"
+          >
+            <img :src="msk" alt="马赛克" style="width: 1em; height: 1em;" />
           </div>
         </el-tooltip>
 
         <el-tooltip content="画笔" placement="top">
-          <div class="tool-item" :class="{ active: currentTool === 'brush' }" @click="toggleTool('brush')">
-            <img :src="hb" alt="画笔" style="width: 1em; height: 1em;">
+          <div
+            class="tool-item"
+            :class="{ active: currentTool === 'brush' }"
+            @click="toggleTool('brush')"
+          >
+            <img :src="hb" alt="画笔" style="width: 1em; height: 1em;" />
           </div>
         </el-tooltip>
 
         <el-tooltip content="撤销" placement="top">
-          <div class="tool-item" :class="{ disabled: !drawHistory.length }" @click="drawHistory.length && undoDraw()">
-            <img :src="undo" alt="撤销" style="width: 1em; height: 1em;">
+          <div
+            class="tool-item"
+            :class="{ disabled: !drawHistory.length }"
+            @click="drawHistory.length && undoDraw()"
+          >
+            <img :src="undo" alt="撤销" style="width: 1em; height: 1em;" />
           </div>
         </el-tooltip>
 
         <el-tooltip content="恢复" placement="top">
-          <div class="tool-item" :class="{ disabled: !redoHistory.length }" @click="redoHistory.length && redoDraw()">
-            <img :src="redo" alt="恢复" style="width: 1em; height: 1em;">
+          <div
+            class="tool-item"
+            :class="{ disabled: !redoHistory.length }"
+            @click="redoHistory.length && redoDraw()"
+          >
+            <img :src="redo" alt="恢复" style="width: 1em; height: 1em;" />
           </div>
         </el-tooltip>
       </div>
     </div>
 
-
     <!-- 侧配置面板 -->
     <div class="tools-panel">
       <el-scrollbar :always="true">
-       <!-- 在尺寸调整面板中添加形状选择 -->
+        <!-- 在尺寸调整面板中添加形状选择 -->
         <div class="size-panel">
           <div class="panel-title">裁剪框形状选择</div>
           <div class="size-inputs">
@@ -1534,15 +1662,23 @@ const uploadInput = ref(null)
           <div class="size-inputs">
             <div class="size-input-group">
               <span class="size-label">宽度</span>
-              <el-input v-model.number="cropArea.width" type="number" :max="canvasRef?.width || 0"
-                @input="value => handleSizeChange('width', value)">
+              <el-input
+                v-model.number="cropArea.width"
+                type="number"
+                :max="canvasRef?.width || 0"
+                @input="value => handleSizeChange('width', value)"
+              >
                 <template #append>px</template>
               </el-input>
             </div>
             <div class="size-input-group">
               <span class="size-label">高度</span>
-              <el-input v-model.number="cropArea.height" type="number" :max="canvasRef?.height || 0"
-                @input="value => handleSizeChange('height', value)">
+              <el-input
+                v-model.number="cropArea.height"
+                type="number"
+                :max="canvasRef?.height || 0"
+                @input="value => handleSizeChange('height', value)"
+              >
                 <template #append>px</template>
               </el-input>
             </div>
@@ -1555,15 +1691,25 @@ const uploadInput = ref(null)
           <div class="size-inputs">
             <div class="size-input-group">
               <span class="size-label">X轴</span>
-              <el-input :model-value="Math.round(cropArea.x - imagePosition.x)" type="number" :min="0"
-                :max="imagePosition.width - cropArea.width" @input="value => handlePositionChange('x', value)">
+              <el-input
+                :model-value="Math.round(cropArea.x - imagePosition.x)"
+                type="number"
+                :min="0"
+                :max="imagePosition.width - cropArea.width"
+                @input="value => handlePositionChange('x', value)"
+              >
                 <template #append>px</template>
               </el-input>
             </div>
             <div class="size-input-group">
               <span class="size-label">Y轴</span>
-              <el-input :model-value="Math.round(cropArea.y - imagePosition.y)" type="number" :min="0"
-                :max="imagePosition.height - cropArea.height" @input="value => handlePositionChange('y', value)">
+              <el-input
+                :model-value="Math.round(cropArea.y - imagePosition.y)"
+                type="number"
+                :min="0"
+                :max="imagePosition.height - cropArea.height"
+                @input="value => handlePositionChange('y', value)"
+              >
                 <template #append>px</template>
               </el-input>
             </div>
@@ -1590,7 +1736,13 @@ const uploadInput = ref(null)
           <div class="size-inputs">
             <div class="size-input-group">
               <span class="size-label">角度</span>
-              <el-input v-model.number="config.rotateAngle" type="number" :min="-360" :max="360" @input="handleRotate">
+              <el-input
+                v-model.number="config.rotateAngle"
+                type="number"
+                :min="-360"
+                :max="360"
+                @input="handleRotate"
+              >
                 <template #append>°</template>
               </el-input>
             </div>
@@ -1608,7 +1760,13 @@ const uploadInput = ref(null)
           <div class="size-inputs">
             <div class="size-input-group">
               <span class="size-label">缩放</span>
-              <el-input v-model.number="config.scale" type="number" :min="10" :max="200" @input="handleScale">
+              <el-input
+                v-model.number="config.scale"
+                type="number"
+                :min="10"
+                :max="200"
+                @input="handleScale"
+              >
                 <template #append>%</template>
               </el-input>
             </div>
@@ -1630,7 +1788,11 @@ const uploadInput = ref(null)
             <!-- 水印文本输入 -->
             <div class="size-input-group">
               <span class="size-label">文本</span>
-              <el-input v-model="config.watermark.text" placeholder="请输入水印文字" @change="updateWatermark" />
+              <el-input
+                v-model="config.watermark.text"
+                placeholder="请输入水印文字"
+                @change="updateWatermark"
+              />
             </div>
 
             <!-- 水印模式 -->
@@ -1646,15 +1808,25 @@ const uploadInput = ref(null)
             <template v-if="config.watermark.mode === 'single'">
               <div class="size-input-group">
                 <span class="size-label">X轴</span>
-                <el-input v-model.number="config.watermark.position.x" type="number" :min="0"
-                  :max="canvasRef?.width || 0" @input="updateWatermark">
+                <el-input
+                  v-model.number="config.watermark.position.x"
+                  type="number"
+                  :min="0"
+                  :max="canvasRef?.width || 0"
+                  @input="updateWatermark"
+                >
                   <template #append>px</template>
                 </el-input>
               </div>
               <div class="size-input-group">
                 <span class="size-label">Y轴</span>
-                <el-input v-model.number="config.watermark.position.y" type="number" :min="0"
-                  :max="canvasRef?.height || 0" @input="updateWatermark">
+                <el-input
+                  v-model.number="config.watermark.position.y"
+                  type="number"
+                  :min="0"
+                  :max="canvasRef?.height || 0"
+                  @input="updateWatermark"
+                >
                   <template #append>px</template>
                 </el-input>
               </div>
@@ -1677,8 +1849,13 @@ const uploadInput = ref(null)
             <!-- 其他印设置保持不变 -->
             <div class="size-input-group">
               <span class="size-label">大小</span>
-              <el-input v-model.number="config.watermark.size" type="number" :min="12" :max="72"
-                @input="updateWatermark">
+              <el-input
+                v-model.number="config.watermark.size"
+                type="number"
+                :min="12"
+                :max="72"
+                @input="updateWatermark"
+              >
                 <template #append>px</template>
               </el-input>
             </div>
@@ -1686,14 +1863,23 @@ const uploadInput = ref(null)
             <!-- 水印颜色 -->
             <div class="size-input-group color-picker-group">
               <span class="size-label">颜色</span>
-              <el-color-picker v-model="config.watermark.color" :predefine="predefineColors" show-alpha
-                @change="handleWatermarkColorChange" />
+              <el-color-picker
+                v-model="config.watermark.color"
+                :predefine="predefineColors"
+                show-alpha
+                @change="handleWatermarkColorChange"
+              />
             </div>
 
             <!-- 水印透明度 -->
             <div class="size-input-group">
               <span class="size-label">透明度</span>
-              <el-slider v-model="config.watermark.opacity" :min="0" :max="100" @input="updateWatermark" />
+              <el-slider
+                v-model="config.watermark.opacity"
+                :min="0"
+                :max="100"
+                @input="updateWatermark"
+              />
             </div>
           </div>
         </div>
@@ -1704,7 +1890,7 @@ const uploadInput = ref(null)
           <div class="size-inputs">
             <div class="size-input-group color-picker-group">
               <span class="size-label">背景色</span>
-              <el-color-picker 
+              <el-color-picker
                 v-model="config.export.backgroundColor"
                 :predefine="predefineColors"
                 show-alpha
@@ -1725,10 +1911,7 @@ const uploadInput = ref(null)
             </div>
           </div>
         </div>
-
       </el-scrollbar>
-
-
 
       <!-- 操作按钮 -->
       <div class="action-buttons">
@@ -1742,12 +1925,8 @@ const uploadInput = ref(null)
         </div>
         <!-- 原有的操作按钮 -->
         <div class="operation-buttons">
-          <el-button type="danger" :disabled="!originalImage" @click="originalImage = null">
-            取消编辑
-          </el-button>
-          <el-button type="primary" :disabled="!originalImage" @click="confirmCrop">
-            确认裁剪
-          </el-button>
+          <el-button type="danger" :disabled="!originalImage" @click="originalImage = null">取消编辑</el-button>
+          <el-button type="primary" :disabled="!originalImage" @click="confirmCrop">确认裁剪</el-button>
         </div>
       </div>
     </div>
@@ -1877,7 +2056,7 @@ const uploadInput = ref(null)
 }
 
 .upload-content:hover .upload-icon {
-  color: #4CAF50;
+  color: #4caf50;
   transform: translateY(-5px);
 }
 
@@ -1907,7 +2086,7 @@ const uploadInput = ref(null)
 
 /* 拖拽状样式 */
 .upload-area[data-dragging="true"] .upload-content {
-  border-color: #4CAF50;
+  border-color: #4caf50;
   background: rgba(76, 175, 80, 0.1);
 }
 
@@ -1939,7 +2118,7 @@ const uploadInput = ref(null)
 }
 
 .action-btn.confirm {
-  background-color: #4CAF50;
+  background-color: #4caf50;
   color: white;
 }
 
@@ -2043,7 +2222,7 @@ const uploadInput = ref(null)
 }
 
 .ratio-option.active {
-  background: #4CAF50;
+  background: #4caf50;
   color: white;
 }
 
@@ -2105,7 +2284,7 @@ const uploadInput = ref(null)
 }
 
 .config-option.active {
-  background: #4CAF50;
+  background: #4caf50;
   color: white;
 }
 
@@ -2218,13 +2397,11 @@ const uploadInput = ref(null)
   border-radius: 4px;
 }
 
-
-
 :deep(.el-button.is-text) {
   padding: 8px;
 }
 
-.el-button+.el-button {
+.el-button + .el-button {
   margin-left: 0px;
 }
 
@@ -2381,13 +2558,13 @@ const uploadInput = ref(null)
   width: 12px;
   height: 12px;
   background: #fff;
-  border: 1px solid #4CAF50;
+  border: 1px solid #4caf50;
   border-radius: 50%;
   z-index: 1;
 }
 
 .resize-handle:hover {
-  background: #4CAF50;
+  background: #4caf50;
   border-color: #fff;
 }
 
