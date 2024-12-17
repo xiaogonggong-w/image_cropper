@@ -1211,6 +1211,90 @@ onMounted(() => {
 
 <template>
   <div class="container">
+    
+
+    <!-- 右侧编辑区域 -->
+    <div class="content-panel">
+      <!-- 编辑器容器 -->
+      <div ref="containerRef" class="editor-container">
+        <div v-if="!originalImage" class="upload-area">
+          <input type="file" accept="image/*" @change="handleFileChange" class="file-input" id="file-input">
+          <label for="file-input" class="upload-content">
+            <div class="upload-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2">
+                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+            </div>
+            <div class="upload-text">
+              <h3>上传图片</h3>
+              <p>点击选择或拖拽图到此处</p>
+              <span class="upload-hint">持 JPG、PNG、GIF 等格式</span>
+            </div>
+          </label>
+        </div>
+
+        <template v-else>
+          <canvas ref="canvasRef" class="editor-canvas" :class="{ drawing: isDrawing }"
+            @mousedown="handleCanvasMouseDown" @mousemove="handleCanvasMouseMove" @mouseup="handleCanvasMouseUp"
+            @mouseleave="handleCanvasMouseUp"></canvas>
+
+          <!-- 裁剪框 -->
+          <div ref="cropBoxRef" class="crop-box" 
+            :data-shape="cropShape"
+            @mousedown="handleCropBoxMouseDown"
+            :style="{ 
+              pointerEvents: ['mosaic', 'brush'].includes(currentTool) ? 'none' : 'auto'
+            }"
+          >
+            <!-- 四角的控制点 -->
+            <div class="resize-handle corner top-left" @mousedown="(e) => handleResizeMouseDown(e, 'top-left')"></div>
+            <div class="resize-handle corner top-right" @mousedown="(e) => handleResizeMouseDown(e, 'top-right')"></div>
+            <div class="resize-handle corner bottom-left" @mousedown="(e) => handleResizeMouseDown(e, 'bottom-left')">
+            </div>
+            <div class="resize-handle corner bottom-right" @mousedown="(e) => handleResizeMouseDown(e, 'bottom-right')">
+            </div>
+
+            <!-- 边的中点控制点 -->
+            <div class="resize-handle edge top" @mousedown="(e) => handleResizeMouseDown(e, 'top')"></div>
+            <div class="resize-handle edge right" @mousedown="(e) => handleResizeMouseDown(e, 'right')"></div>
+            <div class="resize-handle edge bottom" @mousedown="(e) => handleResizeMouseDown(e, 'bottom')"></div>
+            <div class="resize-handle edge left" @mousedown="(e) => handleResizeMouseDown(e, 'left')"></div>
+          </div>
+        </template>
+      </div>
+
+      <!-- 底部工具栏 -->
+      <div v-if="originalImage" class="bottom-toolbar">
+        <el-tooltip content="马赛克" placement="top">
+          <div class="tool-item" :class="{ active: currentTool === 'mosaic' }" @click="toggleTool('mosaic')">
+            <img :src="msk" alt="马赛克" style="width: 1em; height: 1em;">
+          </div>
+        </el-tooltip>
+
+        <el-tooltip content="画笔" placement="top">
+          <div class="tool-item" :class="{ active: currentTool === 'brush' }" @click="toggleTool('brush')">
+            <img :src="hb" alt="画笔" style="width: 1em; height: 1em;">
+          </div>
+        </el-tooltip>
+
+        <el-tooltip content="撤销" placement="top">
+          <div class="tool-item" :class="{ disabled: !drawHistory.length }" @click="drawHistory.length && undoDraw()">
+            <img :src="undo" alt="撤销" style="width: 1em; height: 1em;">
+          </div>
+        </el-tooltip>
+
+        <el-tooltip content="恢复" placement="top">
+          <div class="tool-item" :class="{ disabled: !redoHistory.length }" @click="redoHistory.length && redoDraw()">
+            <img :src="redo" alt="恢复" style="width: 1em; height: 1em;">
+          </div>
+        </el-tooltip>
+      </div>
+    </div>
+
+
     <!-- 侧配置面板 -->
     <div class="tools-panel">
       <el-scrollbar :always="true">
@@ -1452,87 +1536,6 @@ onMounted(() => {
             确认裁剪
           </el-button>
         </div>
-      </div>
-    </div>
-
-    <!-- 右侧编辑区域 -->
-    <div class="content-panel">
-      <!-- 编辑器容器 -->
-      <div ref="containerRef" class="editor-container">
-        <div v-if="!originalImage" class="upload-area">
-          <input type="file" accept="image/*" @change="handleFileChange" class="file-input" id="file-input">
-          <label for="file-input" class="upload-content">
-            <div class="upload-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" stroke-width="2">
-                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7" />
-                <polyline points="17 8 12 3 7 8" />
-                <line x1="12" y1="3" x2="12" y2="15" />
-              </svg>
-            </div>
-            <div class="upload-text">
-              <h3>上传图片</h3>
-              <p>点击选择或拖拽图到此处</p>
-              <span class="upload-hint">持 JPG、PNG、GIF 等格式</span>
-            </div>
-          </label>
-        </div>
-
-        <template v-else>
-          <canvas ref="canvasRef" class="editor-canvas" :class="{ drawing: isDrawing }"
-            @mousedown="handleCanvasMouseDown" @mousemove="handleCanvasMouseMove" @mouseup="handleCanvasMouseUp"
-            @mouseleave="handleCanvasMouseUp"></canvas>
-
-          <!-- 裁剪框 -->
-          <div ref="cropBoxRef" class="crop-box" 
-            :data-shape="cropShape"
-            @mousedown="handleCropBoxMouseDown"
-            :style="{ 
-              pointerEvents: ['mosaic', 'brush'].includes(currentTool) ? 'none' : 'auto'
-            }"
-          >
-            <!-- 四角的控制点 -->
-            <div class="resize-handle corner top-left" @mousedown="(e) => handleResizeMouseDown(e, 'top-left')"></div>
-            <div class="resize-handle corner top-right" @mousedown="(e) => handleResizeMouseDown(e, 'top-right')"></div>
-            <div class="resize-handle corner bottom-left" @mousedown="(e) => handleResizeMouseDown(e, 'bottom-left')">
-            </div>
-            <div class="resize-handle corner bottom-right" @mousedown="(e) => handleResizeMouseDown(e, 'bottom-right')">
-            </div>
-
-            <!-- 边的中点控制点 -->
-            <div class="resize-handle edge top" @mousedown="(e) => handleResizeMouseDown(e, 'top')"></div>
-            <div class="resize-handle edge right" @mousedown="(e) => handleResizeMouseDown(e, 'right')"></div>
-            <div class="resize-handle edge bottom" @mousedown="(e) => handleResizeMouseDown(e, 'bottom')"></div>
-            <div class="resize-handle edge left" @mousedown="(e) => handleResizeMouseDown(e, 'left')"></div>
-          </div>
-        </template>
-      </div>
-
-      <!-- 底部工具栏 -->
-      <div v-if="originalImage" class="bottom-toolbar">
-        <el-tooltip content="马赛克" placement="top">
-          <div class="tool-item" :class="{ active: currentTool === 'mosaic' }" @click="toggleTool('mosaic')">
-            <img :src="msk" alt="马赛克" style="width: 1em; height: 1em;">
-          </div>
-        </el-tooltip>
-
-        <el-tooltip content="画笔" placement="top">
-          <div class="tool-item" :class="{ active: currentTool === 'brush' }" @click="toggleTool('brush')">
-            <img :src="hb" alt="画笔" style="width: 1em; height: 1em;">
-          </div>
-        </el-tooltip>
-
-        <el-tooltip content="撤销" placement="top">
-          <div class="tool-item" :class="{ disabled: !drawHistory.length }" @click="drawHistory.length && undoDraw()">
-            <img :src="undo" alt="撤销" style="width: 1em; height: 1em;">
-          </div>
-        </el-tooltip>
-
-        <el-tooltip content="恢复" placement="top">
-          <div class="tool-item" :class="{ disabled: !redoHistory.length }" @click="redoHistory.length && redoDraw()">
-            <img :src="redo" alt="恢复" style="width: 1em; height: 1em;">
-          </div>
-        </el-tooltip>
       </div>
     </div>
   </div>
