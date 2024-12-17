@@ -6,11 +6,13 @@ import hb from '../assets/hb.svg'
 import msk from '../assets/msk.svg'
 import redo from '../assets/redo.svg'
 import undo from '../assets/undo.svg'
-import { Folder, Setting } from '@element-plus/icons-vue'
+import { Folder, Setting, Plus, Delete } from '@element-plus/icons-vue'
 
 const canvasRef = ref(null)
 const cropBoxRef = ref(null)
 const originalImage = ref(null)
+const currentNav = ref('')
+const imageFiles = ref([])
 const cropArea = ref({
   x: 0,
   y: 0,
@@ -61,6 +63,12 @@ const shapeOptions = [
 
 // 添加背景颜色状态
 const backgroundColor = ref('#FFFFFF') // 默认白色背景
+
+// 添加文件输入框的引用
+const fileInput = ref(null)
+
+// 添加当前选中文件索引
+const currentFileIndex = ref(-1)
 
 function handleCanvasDraw() {
   if (!canvasRef.value || !originalImage.value) return
@@ -563,24 +571,7 @@ const handleCropBoxMouseDown = (e) => {
   document.addEventListener('mouseup', handleMouseUp)
 }
 
-// 修改文件选择处理
-const handleFileChange = (e) => {
-  const file = e.target.files[0]
-  if (file) {
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const img = new Image()
-      img.onload = () => {
-        originalImage.value = img
-        nextTick(() => {
-          initCanvas(img)
-        })
-      }
-      img.src = e.target.result
-    }
-    reader.readAsDataURL(file)
-  }
-}
+
 
 // 确认裁剪
 const confirmCrop = () => {
@@ -588,7 +579,7 @@ const confirmCrop = () => {
   const ctx = canvas.getContext('2d')
   const area = cropArea.value
 
-  // 设置输出画布大小
+  // 设���输出画布大小
   canvas.width = area.width
   canvas.height = area.height
 
@@ -637,7 +628,7 @@ const confirmCrop = () => {
     destX, destY, sourceWidth, sourceHeight
   )
 
-  // 下��裁剪后的图片
+  // 下裁剪后的图片
   const link = document.createElement('a')
   link.download = `cropped_${Date.now()}.png`
   link.href = canvas.toDataURL()
@@ -1208,6 +1199,120 @@ const deleteConfig = (name) => {
 onMounted(() => {
   loadConfigs()
 })
+
+// ���理文件夹选择
+const folderInput = ref(null)
+const handleFolderChange = (e) => {
+  const files = Array.from(e.target.files).filter(file => 
+    file.type.startsWith('image/')
+  )
+  
+  files.forEach(file => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const img = new Image()
+      img.onload = () => {
+        imageFiles.value.push({
+          name: file.name,
+          url: e.target.result,
+          timestamp: Date.now(),
+          image: img,
+          path: file.webkitRelativePath || file.name // 保存文件路径
+        })
+      }
+      img.src = e.target.result
+    }
+    reader.readAsDataURL(file)
+  })
+  
+  // 清空输入，以便可以重复选择同一文件夹
+  e.target.value = ''
+}
+
+// 添加文件选择方法
+const selectFile = (index) => {
+  currentFileIndex.value = index
+  const file = imageFiles.value[index]
+  originalImage.value = file.image
+  nextTick(() => {
+    initCanvas(file.image)
+  })
+}
+
+// 添加文件删除方法
+const removeFile = (index) => {
+  // 如果删除的是当前选中的文件，清空预览
+  if (index === currentFileIndex.value) {
+    originalImage.value = null
+    currentFileIndex.value = -1
+  } else if (index < currentFileIndex.value) {
+    // 如果删除的文件在当前选中文件之前，更新索引
+    currentFileIndex.value--
+  }
+  imageFiles.value.splice(index, 1)
+}
+
+// 修改上传区域��显示条件
+const showUploadArea = computed(() => {
+  return !originalImage.value || imageFiles.value.length === 0
+})
+
+// 添加文件拖拽处理方法
+const handleFileDrop = (e) => {
+  const files = Array.from(e.dataTransfer.files).filter(file => 
+    file.type.startsWith('image/')
+  )
+  
+  files.forEach(file => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const img = new Image()
+      img.onload = () => {
+        imageFiles.value.push({
+          name: file.name,
+          url: e.target.result,
+          timestamp: Date.now(),
+          image: img
+        })
+      }
+      img.src = e.target.result
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
+// 修改上传区域点击处理方法
+const handleUploadClick = () => {
+  // 切换到文件导航
+  currentNav.value = 'files'
+}
+
+// 修改文件选择处理方法
+const handleFileChange = (e) => {
+  const files = Array.from(e.target.files)
+  currentNav.value = 'files'
+  files.forEach(file => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const img = new Image()
+      img.onload = () => {
+        imageFiles.value.push({
+          name: file.name,
+          url: e.target.result,
+          timestamp: Date.now(),
+          image: img
+        })
+      }
+      img.src = e.target.result
+    }
+    reader.readAsDataURL(file)
+  })
+  // 清空输入，以便可以重复选择同一文件
+  e.target.value = ''
+}
+
+// 修改文件输入框的引用名称
+const uploadInput = ref(null)
 </script>
 
 <template>
@@ -1215,20 +1320,119 @@ onMounted(() => {
     <!-- 左侧导航 -->
     <div class="nav-panel">
       <div class="nav-item" :class="{ active: currentNav === 'files' }" @click="currentNav = 'files'">
-         <Folder  style="width: 1em; height: 1em;"></Folder>
+        <Folder style="width: 1em; height: 1em;"></Folder>
       </div>
       <div class="nav-item" :class="{ active: currentNav === 'configs' }" @click="currentNav = 'configs'">
         <Setting style="width: 1em; height: 1em;"></Setting>
       </div>
     </div>
 
+    <!-- 左侧列表面板 -->
+    <div class="list-panel" v-show="currentNav">
+      <!-- 文件列表 -->
+      <template v-if="currentNav === 'files'">
+        <div class="panel-header">
+          <h3>文件列表</h3>
+          <div class="header-actions">
+            <el-button size="small" @click="$refs.fileInput.click()">
+              <el-icon><Plus /></el-icon>添加文件
+            </el-button>
+            <el-button size="small" @click="$refs.folderInput.click()">
+              <el-icon><Folder /></el-icon>添加文件夹
+            </el-button>
+            <!-- 添加隐藏的文件夹输入 -->
+            <input
+              ref="folderInput"
+              type="file"
+              accept="image/*"
+              @change="handleFolderChange"
+              style="display: none"
+              webkitdirectory
+              multiple
+            >
+            <!-- 添加文件输入框 -->
+            <input
+              ref="fileInput"
+              type="file"
+              accept="image/*"
+              @change="handleFileChange"
+              style="display: none"
+              multiple
+            >
+          </div>
+        </div>
+        <div class="list-content">
+          <div v-for="(file, index) in imageFiles" 
+               :key="index"
+               class="list-item"
+               :class="{ active: currentFileIndex === index }"
+               @click="selectFile(index)">
+            <img :src="file.url" class="item-thumb">
+            <div class="item-info">
+              <span class="item-name">{{ file.name }}</span>
+              <span class="item-time">{{ new Date(file.timestamp).toLocaleString() }}</span>
+            </div>
+            <el-button 
+              type="danger" 
+              size="small" 
+              circle
+              @click.stop="removeFile(index)"
+              style="width: 2.2em;"
+            >
+              <el-icon><Delete /></el-icon>
+            </el-button>
+          </div>
+        </div>
+      </template>
+
+      <!-- 配置列表 -->
+      <template v-else>
+        <div class="panel-header">
+          <h3>配置列表</h3>
+          <div class="config-input">
+            <el-input v-model="currentConfigName" placeholder="配置名称" size="small">
+              <template #append>
+                <el-button @click="saveConfig(currentConfigName)">保存</el-button>
+              </template>
+            </el-input>
+          </div>
+        </div>
+        <div class="list-content">
+          <div v-for="cfg in savedConfigs" 
+               :key="cfg.name" 
+               class="list-item">
+            <div class="item-info">
+              <span class="item-name">{{ cfg.name }}</span>
+              <span class="item-time">{{ new Date(cfg.timestamp).toLocaleString() }}</span>
+            </div>
+            <div class="item-actions">
+              <el-button type="primary" size="small" @click="applyConfig(cfg.data)">应用</el-button>
+              <el-button type="danger" size="small" @click="deleteConfig(cfg.name)">删除</el-button>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
+
     <!-- 右侧编辑区域 -->
     <div class="content-panel">
       <!-- 编辑器容器 -->
       <div ref="containerRef" class="editor-container">
-        <div v-if="!originalImage" class="upload-area">
-          <input type="file" accept="image/*" @change="handleFileChange" class="file-input" id="file-input">
-          <label for="file-input" class="upload-content">
+        <!-- 修改上传区域部分 -->
+        <div v-if="showUploadArea" 
+             class="upload-area" 
+             @dragover.prevent 
+             @drop.prevent="handleFileDrop">
+          <input
+            ref="uploadInput"
+            type="file"
+            accept="image/*"
+            @change="handleFileChange"
+            class="file-input"
+            id="upload-input"
+            multiple
+          >
+          <label for="upload-input" class="upload-content" @click="handleUploadClick">
             <div class="upload-icon">
               <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" stroke-width="2">
@@ -1239,8 +1443,8 @@ onMounted(() => {
             </div>
             <div class="upload-text">
               <h3>上传图片</h3>
-              <p>点击选择或拖拽图到此处</p>
-              <span class="upload-hint">持 JPG、PNG、GIF 等格式</span>
+              <p>点击选择或拖拽图片到此处</p>
+              <span class="upload-hint">支持 JPG、PNG、GIF 等格式</span>
             </div>
           </label>
         </div>
@@ -1506,7 +1710,7 @@ onMounted(() => {
                 show-alpha
               />
             </div>
-            <!-- 显示已保存的配置列表 -->
+            <!-- 显��已保存的配置列表 -->
             <div v-if="savedConfigs.length" class="saved-configs">
               <div v-for="cfg in savedConfigs" :key="cfg.name" class="config-item">
                 <div class="config-info">
@@ -1988,7 +2192,7 @@ onMounted(() => {
   justify-content: center;
 }
 
-/* 覆盖 Element Plus 的一些默认样式 */
+/* 覆盖 Element Plus 的一些默认样�� */
 :deep(.el-collapse) {
   border: none;
 }
@@ -2501,5 +2705,197 @@ onMounted(() => {
 .nav-icon {
   font-size: 24px;
   margin-bottom: 4px;
+}
+
+/* 添加列表面板样式 */
+.list-panel {
+  width: 250px;
+  background: #fff;
+  border-right: 1px solid #f0f0f0;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-header {
+  padding: 16px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.panel-header h3 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  color: #333;
+}
+
+.list-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.list-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px; /* 减小内边距 */
+  border: 1px solid #f0f0f0;
+  border-radius: 4px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.list-item:hover {
+  background: #f5f5f5;
+}
+
+.list-item.active {
+  border-color: #1890ff;
+  background: #e6f7ff;
+}
+
+.item-thumb {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+.item-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.item-name {
+  font-size: 14px;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item-time {
+  font-size: 12px;
+  color: #999;
+}
+
+.item-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* 修改导航样式 */
+.nav-panel {
+  padding: 16px 8px;
+  border-right: 1px solid #f0f0f0;
+}
+
+.nav-item {
+  padding: 12px;
+  margin-bottom: 8px;
+}
+
+.nav-item.active {
+  color: #1890ff;
+  background: #e6f7ff;
+}
+
+/* 添加头部按钮组样式 */
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* 调整按钮样式 */
+.header-actions .el-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.header-actions .el-icon {
+  margin-right: 4px;
+}
+
+/* 调整删除按钮样式 */
+.list-item .el-button {
+  padding: 6px;
+  min-width: unset; /* 移除最小宽度 */
+}
+
+/* 确保图标在圆形按钮中居中 */
+.list-item .el-icon {
+  margin: 0;
+}
+
+/* 修改上传区域样式 */
+.upload-area {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed #dcdfe6;
+  border-radius: 8px;
+  background: #fff;
+  transition: all 0.3s;
+}
+
+.upload-area:hover {
+  border-color: #409eff;
+  background: #f5f7fa;
+}
+
+.file-input {
+  display: none;
+}
+
+.upload-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 32px;
+  cursor: pointer;
+  width: 100%;
+  height: 100%;
+  justify-content: center;
+}
+
+.upload-icon {
+  color: #909399;
+  margin-bottom: 16px;
+}
+
+.upload-text {
+  text-align: center;
+}
+
+.upload-text h3 {
+  margin: 0;
+  color: #333;
+  font-size: 1.5em;
+  font-weight: 500;
+}
+
+.upload-text p {
+  margin: 8px 0;
+  color: #666;
+  font-size: 1em;
+}
+
+.upload-hint {
+  display: block;
+  margin-top: 8px;
+  color: #999;
+  font-size: 0.9em;
+}
+
+/* 拖拽状态样式 */
+.upload-area[data-dragging="true"] {
+  border-color: #409eff;
+  background: #f5f7fa;
 }
 </style>
