@@ -35,6 +35,9 @@ const config = reactive({
       x: 0,
       y: 0
     }
+  },
+  export: {
+    backgroundColor: '#FFFFFF'  // 将backgroundColor移入config中
   }
 })
 
@@ -589,7 +592,7 @@ const confirmCrop = () => {
   canvas.height = area.height
 
   // 先填充背景色
-  ctx.fillStyle = backgroundColor.value
+  ctx.fillStyle = config.export.backgroundColor
   ctx.fillRect(0, 0, canvas.width, canvas.height)
 
   // 根据不同形状进行裁剪
@@ -633,7 +636,7 @@ const confirmCrop = () => {
     destX, destY, sourceWidth, sourceHeight
   )
 
-  // 下载裁剪后的图片
+  // 下��裁剪后的图片
   const link = document.createElement('a')
   link.download = `cropped_${Date.now()}.png`
   link.href = canvas.toDataURL()
@@ -1139,6 +1142,71 @@ const handleShapeChange = (shape) => {
   updateCropBoxPosition()
 }
 
+// 添加配置管理相关的状态和方法
+const savedConfigs = ref([])
+const currentConfigName = ref('')
+
+// 从 localStorage 加载配置
+const loadConfigs = () => {
+  const configs = localStorage.getItem('imageEditorConfigs')
+  if (configs) {
+    savedConfigs.value = JSON.parse(configs)
+  }
+}
+
+// 保存配置到 localStorage
+const saveConfig = (name) => {
+  if (!name) {
+    ElMessage.warning('请输入配置名称')
+    return
+  }
+
+  const newConfig = {
+    name,
+    timestamp: Date.now(),
+    data: {
+      rotateAngle: config.rotateAngle,
+      scale: config.scale,
+      watermark: { ...config.watermark },
+      export: { ...config.export }
+    }
+  }
+
+  const index = savedConfigs.value.findIndex(c => c.name === name)
+  if (index !== -1) {
+    savedConfigs.value[index] = newConfig
+  } else {
+    savedConfigs.value.push(newConfig)
+  }
+
+  localStorage.setItem('imageEditorConfigs', JSON.stringify(savedConfigs.value))
+  currentConfigName.value = ''
+  ElMessage.success('配置保存成功')
+}
+
+// 应用配置
+const applyConfig = (configData) => {
+  config.rotateAngle = configData.rotateAngle
+  config.scale = configData.scale
+  config.watermark = { ...config.watermark, ...configData.watermark }
+  config.export = { ...config.export, ...configData.export }
+  
+  // 更新画布
+  handleCanvasDraw()
+  ElMessage.success('配置应用成功')
+}
+
+// 删除配置
+const deleteConfig = (name) => {
+  savedConfigs.value = savedConfigs.value.filter(c => c.name !== name)
+  localStorage.setItem('imageEditorConfigs', JSON.stringify(savedConfigs.value))
+  ElMessage.success('配置删除成功')
+}
+
+// 在组件挂载时加载配置
+onMounted(() => {
+  loadConfigs()
+})
 </script>
 
 <template>
@@ -1340,10 +1408,23 @@ const handleShapeChange = (shape) => {
             <div class="size-input-group color-picker-group">
               <span class="size-label">背景色</span>
               <el-color-picker 
-                v-model="backgroundColor"
+                v-model="config.export.backgroundColor"
                 :predefine="predefineColors"
                 show-alpha
               />
+            </div>
+            <!-- 显示已保存的配置列表 -->
+            <div v-if="savedConfigs.length" class="saved-configs">
+              <div v-for="cfg in savedConfigs" :key="cfg.name" class="config-item">
+                <div class="config-info">
+                  <span class="config-name">{{ cfg.name }}</span>
+                  <span class="config-time">{{ new Date(cfg.timestamp).toLocaleString() }}</span>
+                </div>
+                <div class="config-actions">
+                  <el-button type="primary" size="small" @click="applyConfig(cfg.data)">应用</el-button>
+                  <el-button type="danger" size="small" @click="deleteConfig(cfg.name)">删除</el-button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1354,12 +1435,23 @@ const handleShapeChange = (shape) => {
 
       <!-- 操作按钮 -->
       <div class="action-buttons">
-        <el-button type="danger" :disabled="!originalImage" @click="originalImage = null">
-          取消编辑
-        </el-button>
-        <el-button type="primary" :disabled="!originalImage" @click="confirmCrop">
-          确认裁剪
-        </el-button>
+        <!-- 添加保存配置输入框和按钮 -->
+        <div class="save-config-group">
+          <el-input v-model="currentConfigName" placeholder="请输入配置名称" size="default">
+            <template #append>
+              <el-button @click="saveConfig(currentConfigName)">保存配置</el-button>
+            </template>
+          </el-input>
+        </div>
+        <!-- 原有的操作按钮 -->
+        <div class="operation-buttons">
+          <el-button type="danger" :disabled="!originalImage" @click="originalImage = null">
+            取消编辑
+          </el-button>
+          <el-button type="primary" :disabled="!originalImage" @click="confirmCrop">
+            确认裁剪
+          </el-button>
+        </div>
       </div>
     </div>
 
@@ -1486,10 +1578,34 @@ const handleShapeChange = (shape) => {
 /* 操作按钮器 */
 .action-buttons {
   margin-top: auto;
-  padding-top: 16px;
+  padding: 16px;
   border-top: 1px solid #eee;
   display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.save-config-group {
+  display: flex;
   gap: 8px;
+}
+
+.save-config-group :deep(.el-input-group__append) {
+  padding: 0;
+}
+
+.save-config-group :deep(.el-input-group__append .el-button) {
+  border-radius: 0 4px 4px 0;
+  margin: 0;
+}
+
+.operation-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.operation-buttons .el-button {
+  flex: 1;
 }
 
 /* 右侧上传区域样式保持不变 */
@@ -2291,5 +2407,53 @@ const handleShapeChange = (shape) => {
 /* 确保颜色面板显示在正确位置 */
 :deep(.el-color-picker__panel) {
   position: fixed !important;
+}
+
+/* 添加配置相关样式 */
+.saved-configs {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #eee;
+}
+
+.config-item {
+  margin-bottom: 8px;
+  padding: 8px;
+  border: 1px solid #eee;
+  border-radius: 4px;
+  transition: all 0.3s ease;
+}
+
+.config-item:last-child {
+  margin-bottom: 0;
+}
+
+.config-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.config-name {
+  font-weight: 500;
+  color: #333;
+}
+
+.config-time {
+  font-size: 12px;
+  color: #999;
+}
+
+.config-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.config-item:hover {
+  border-color: #1890ff;
+  transform: translateX(4px);
+  transition: all 0.3s ease;
 }
 </style>
