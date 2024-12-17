@@ -1282,20 +1282,18 @@ const selectFile = key => {
   }
   currentFileIndex.value = key;
   const file = imageFiles.value.find(file => file.key === key);
-  config.value = deepClone(file.config);
+  config.value = deepClone(config);
+  console.log(config.value);
+  
   originalImage.value = file.image;
   
   nextTick(() => {
-  console.log('originalImage',originalImage.value);
 
-    // if (originalImage.value) {
-    //   originalImage.value = file.image;
-    //   handleCanvasDraw();
-    // }else{
-
-      initCanvas(file.image);
-
-    // }
+    if (file.config) {
+      handleCanvasDraw();
+    }else{
+    initCanvas(file.image);
+    }
 
   });
 };
@@ -1333,7 +1331,7 @@ const handleFileDrop = e => {
           timestamp: Date.now(),
           image: img,
           key: nanoid(),
-          config: deepClone(defaultConfig)
+          config: null
         });
       };
       img.src = e.target.result;
@@ -1363,7 +1361,7 @@ const handleFileChange = e => {
           url: e.target.result,
           timestamp: Date.now(),
           image: img,
-          config: deepClone(defaultConfig)
+          config: null
         });
       };
       img.src = e.target.result;
