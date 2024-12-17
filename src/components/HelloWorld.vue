@@ -792,42 +792,53 @@ const toggleTool = (tool) => {
   }
 }
 
-// 添加检查点是否在裁剪框内的方法
+// 修改检查点是否在裁剪区域内的方法
 const isPointInCropArea = (x, y) => {
   const area = cropArea.value
-  const image = imagePosition.value;
+  const image = imagePosition.value
+  const mosaicSize = 10 // 马赛克块大小
+
+  // 考虑马赛克块大小的边界检查
   return (
     x >= area.x &&
     x <= area.x + area.width &&
     y >= area.y &&
     y <= area.y + area.height &&
-    x > image.x &&
-    x < image.x + image.width &&
-    y > image.y &&
-    y < image.y + image.height
+    x >= image.x + mosaicSize/2 &&
+    x <= image.x + image.width - mosaicSize/2 &&
+    y >= image.y + mosaicSize/2 &&
+    y <= image.y + image.height - mosaicSize/2
   )
 }
 
-// 修改马赛克绘制法
+// 修改马赛克绘制方法
 const drawMosaic = (x, y) => {
   if (!isPointInCropArea(x, y)) return
-  // 在绘制前保存当前状态
-  // if (!lastPos.value.x && !lastPos.value.y) {
-  //   saveDrawState()
-  // }
+
   const ctx = canvasRef.value.getContext('2d')
   const size = 10 // 马赛克块大小
 
   // 获取起点和终点之间的所有点
   const points = getLinePoints(lastPos.value.x, lastPos.value.y, x, y)
 
-  drawMosaicOperation(ctx, size, points)
+  // 过滤掉靠近边缘的点
+  const validPoints = points.filter(point => {
+    const img = imagePosition.value
+    return (
+      point.x >= img.x + size/2 &&
+      point.x <= img.x + img.width - size/2 &&
+      point.y >= img.y + size/2 &&
+      point.y <= img.y + img.height - size/2
+    )
+  })
+
+  drawMosaicOperation(ctx, size, validPoints)
 
   // 保存马赛克操作
   const len = drawHistory.value.length;
   drawHistory.value[len - 1].data.push({
     size: size,
-    points: points
+    points: validPoints
   })
 }
 // 制马赛克
