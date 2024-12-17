@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, nextTick, computed, onUnmounted, reactive } from 'vue'
+import { ref, onMounted, nextTick, computed, onUnmounted, reactive, watch } from 'vue'
 import { ElCollapse, ElCollapseItem, ElButton, ElInput, ElTooltip, ElColorPicker, ElSlider, ElScrollbar, ElRadioGroup, ElRadio, ElSelect, ElOption } from 'element-plus'
 import 'element-plus/dist/index.css'
 import hb from '../assets/hb.svg'
@@ -96,13 +96,13 @@ function handleCanvasDraw() {
   // 恢复水印
   drawWatermark()
 
-  // 恢复马赛克和画笔
+  // ��复马赛克和画笔
   restoreToolsOperations()
 }
 
-// 添加旋转处理方法
+// 修改旋转处理方法
 const handleRotate = (value) => {
-  if (!cropArea.value || !canvasRef.value) return
+  if (!cropArea.value || !canvasRef.value || !originalImage.value) return
 
   // 如果是点击按钮入的值，直接加到当前角度上
   if (typeof value === 'number') {
@@ -114,15 +114,18 @@ const handleRotate = (value) => {
     config.rotateAngle = ((angle % 360) + 360) % 360
   }
 
+  // 更新图片位置和尺寸
+  updateImagePosition()
   handleCanvasDraw()
 }
-// 添加缩放处理方法
+
+// 修改缩放处理方法
 const handleScale = (value) => {
   if (!canvasRef.value || !originalImage.value) return
 
   let newScale
   if (typeof value === 'number') {
-    // 按钮点，增加或减少缩放
+    // 按钮点击，增加或减少缩放
     newScale = Math.min(200, Math.max(10, config.scale + value))
   } else {
     // 输入框输入
@@ -131,12 +134,41 @@ const handleScale = (value) => {
 
   config.scale = newScale
 
+  // 更新图片位置和尺寸
+  updateImagePosition()
   handleCanvasDraw()
 }
 
+// 添加更新图片位置和尺寸的方法
+const updateImagePosition = () => {
+  if (!canvasRef.value || !originalImage.value) return
 
+  const canvas = canvasRef.value
+  const image = originalImage.value
 
+  // 计算基础缩放比例
+  const baseScale = Math.min(
+    canvas.width / image.width,
+    canvas.height / image.height
+  )
+  const finalScale = baseScale * (config.scale / 100)
 
+  // 计算旋转后的尺寸
+  const angle = (config.rotateAngle * Math.PI) / 180
+  const rotatedWidth = Math.abs(Math.cos(angle) * image.width * finalScale) + 
+                      Math.abs(Math.sin(angle) * image.height * finalScale)
+  const rotatedHeight = Math.abs(Math.sin(angle) * image.width * finalScale) + 
+                       Math.abs(Math.cos(angle) * image.height * finalScale)
+
+  // 更新图片位置信息
+  imagePosition.value = {
+    x: (canvas.width - rotatedWidth) / 2,
+    y: (canvas.height - rotatedHeight) / 2,
+    width: rotatedWidth,
+    height: rotatedHeight,
+    scale: finalScale
+  }
+}
 
 // 添加预定义颜色
 const predefineColors = [
@@ -158,7 +190,7 @@ const handleWatermarkColorChange = (color) => {
 }
 
 
-// 修改水印位置处���方法
+// 修改水印位置处理方法
 const handleWatermarkPosition = (position) => {
   if (!cropArea.value) return
 
@@ -213,7 +245,7 @@ const handleWatermarkPosition = (position) => {
   updateWatermark()
 }
 
-// 添加水印默认位置初始��
+// 添加水印默认位置初始
 const initWatermarkPosition = () => {
   if (!cropArea.value) return
 
@@ -361,7 +393,7 @@ const handlePositionChange = (axis, value) => {
   updateCropBoxPosition()
 }
 
-// 修改快捷��置处理方法
+// 修改快捷置处理方法
 const handleQuickPosition = (position) => {
   if (!cropArea.value || !canvasRef.value) return
 
@@ -477,7 +509,9 @@ const initCanvas = (image) => {
 // 添加图片位置状态
 const imagePosition = ref({ x: 0, y: 0, width: 0, height: 0 })
 
-
+watch(() => imagePosition.value, (newVal) => {
+  console.log('imagePosition', newVal)
+})
 
 // 更新裁剪框位置
 const updateCropBoxPosition = () => {
@@ -761,11 +795,16 @@ const toggleTool = (tool) => {
 // 添加检查点是否在裁剪框内的方法
 const isPointInCropArea = (x, y) => {
   const area = cropArea.value
+  const image = imagePosition.value;
   return (
     x >= area.x &&
     x <= area.x + area.width &&
     y >= area.y &&
-    y <= area.y + area.height
+    y <= area.y + area.height &&
+    x > image.x &&
+    x < image.x + image.width &&
+    y > image.y &&
+    y < image.y + image.height
   )
 }
 
@@ -1179,7 +1218,7 @@ const handleShapeChange = (shape) => {
                 <template #append>°</template>
               </el-input>
             </div>
-            <!-- 快捷旋转按钮 -->
+            <!-- 快捷��转按钮 -->
             <div class="rotate-buttons">
               <el-button @click="handleRotate(-90)">左转90°</el-button>
               <el-button @click="handleRotate(90)">右转90°</el-button>
@@ -2033,7 +2072,7 @@ const handleShapeChange = (shape) => {
   cursor: se-resize;
 }
 
-/* 调整���制点样式 */
+/* 调整制点样式 */
 .resize-handle.edge {
   width: 8px;
   height: 8px;
