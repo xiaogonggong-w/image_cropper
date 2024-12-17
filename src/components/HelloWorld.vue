@@ -55,6 +55,9 @@ const shapeOptions = [
   { label: '圆形', value: 'circle' }
 ]
 
+// 添加背景颜色状态
+const backgroundColor = ref('#FFFFFF') // 默认白色背景
+
 function handleCanvasDraw() {
   if (!canvasRef.value || !originalImage.value) return
 
@@ -155,7 +158,7 @@ const handleWatermarkColorChange = (color) => {
 }
 
 
-// 修改水印位置处理方法
+// 修改水印位置处���方法
 const handleWatermarkPosition = (position) => {
   if (!cropArea.value) return
 
@@ -210,11 +213,11 @@ const handleWatermarkPosition = (position) => {
   updateWatermark()
 }
 
-// 添加水印默认位置初始化
+// 添加水印默认位置初始��
 const initWatermarkPosition = () => {
   if (!cropArea.value) return
 
-  // 设置水印���置为裁剪框中心
+  // 设置水印位置为裁剪框中心
   config.watermark.position = {
     x: cropArea.value.x + cropArea.value.width / 2,
     y: cropArea.value.y + cropArea.value.height / 2
@@ -358,7 +361,7 @@ const handlePositionChange = (axis, value) => {
   updateCropBoxPosition()
 }
 
-// 修改快捷位置处理方法
+// 修改快捷��置处理方法
 const handleQuickPosition = (position) => {
   if (!cropArea.value || !canvasRef.value) return
 
@@ -551,6 +554,10 @@ const confirmCrop = () => {
   canvas.width = area.width
   canvas.height = area.height
 
+  // 先填充背景色
+  ctx.fillStyle = backgroundColor.value
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+
   // 根据不同形状进行裁剪
   ctx.beginPath()
   switch (cropShape.value) {
@@ -569,22 +576,27 @@ const confirmCrop = () => {
         Math.PI * 2
       )
       break
-    case 'triangle':
-      ctx.moveTo(area.width / 2, 0)
-      ctx.lineTo(area.width, area.height)
-      ctx.lineTo(0, area.height)
-      ctx.closePath()
-      break
     default: // rect
       ctx.rect(0, 0, area.width, area.height)
   }
   ctx.clip()
 
-  // 裁剪并绘制
+  // 计算图片在裁剪框中的相对位置
+  const img = imagePosition.value
+  const sourceX = Math.max(0, area.x - img.x)
+  const sourceY = Math.max(0, area.y - img.y)
+  const sourceWidth = Math.min(img.width - sourceX, area.width)
+  const sourceHeight = Math.min(img.height - sourceY, area.height)
+
+  // 计算图片在画布上的绘制位置
+  const destX = Math.max(0, img.x - area.x)
+  const destY = Math.max(0, img.y - area.y)
+
+  // 绘制图片
   ctx.drawImage(
     canvasRef.value,
-    area.x, area.y, area.width, area.height,
-    0, 0, area.width, area.height
+    sourceX + img.x, sourceY + img.y, sourceWidth, sourceHeight,
+    destX, destY, sourceWidth, sourceHeight
   )
 
   // 下载裁剪后的图片
@@ -939,7 +951,7 @@ const getLinePoints = (x1, y1, x2, y2) => {
   return points
 }
 
-// 获区域平均��色
+// 获区域平均颜色
 const getAverageColor = (data) => {
   let r = 0, g = 0, b = 0
   const count = data.length / 4
@@ -1271,7 +1283,21 @@ const handleShapeChange = (shape) => {
           </div>
         </div>
 
-       
+        <!-- 在尺寸调整面板中添加背景颜色选择器 -->
+        <div class="size-panel">
+          <div class="panel-title">导出设置</div>
+          <div class="size-inputs">
+            <div class="size-input-group color-picker-group">
+              <span class="size-label">背景色</span>
+              <el-color-picker 
+                v-model="backgroundColor"
+                :predefine="predefineColors"
+                show-alpha
+              />
+            </div>
+          </div>
+        </div>
+
       </el-scrollbar>
 
 
@@ -2007,7 +2033,7 @@ const handleShapeChange = (shape) => {
   cursor: se-resize;
 }
 
-/* 调整控制点样式 */
+/* 调整���制点样式 */
 .resize-handle.edge {
   width: 8px;
   height: 8px;
