@@ -6,6 +6,7 @@ import hb from '../assets/hb.svg'
 import msk from '../assets/msk.svg'
 import redo from '../assets/redo.svg'
 import undo from '../assets/undo.svg'
+import { Folder, Setting } from '@element-plus/icons-vue'
 
 const canvasRef = ref(null)
 const cropBoxRef = ref(null)
@@ -1211,7 +1212,15 @@ onMounted(() => {
 
 <template>
   <div class="container">
-    
+    <!-- 左侧导航 -->
+    <div class="nav-panel">
+      <div class="nav-item" :class="{ active: currentNav === 'files' }" @click="currentNav = 'files'">
+         <Folder  style="width: 1em; height: 1em;"></Folder>
+      </div>
+      <div class="nav-item" :class="{ active: currentNav === 'configs' }" @click="currentNav = 'configs'">
+        <Setting style="width: 1em; height: 1em;"></Setting>
+      </div>
+    </div>
 
     <!-- 右侧编辑区域 -->
     <div class="content-panel">
@@ -2458,5 +2467,39 @@ onMounted(() => {
   border-color: #1890ff;
   transform: translateX(4px);
   transition: all 0.3s ease;
+}
+
+/* 添加导航栏样式 */
+.nav-panel {
+  padding-right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #ccc;
+  cursor: pointer;
+  transition: all 0.3s;
+  padding: 8px;
+  border-radius: 4px;
+}
+
+.nav-item:hover {
+  background: #f0f0f0;
+}
+
+.nav-item.active {
+  background: #f0f0f0;
+}
+
+.nav-icon {
+  font-size: 24px;
+  margin-bottom: 4px;
 }
 </style>
