@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted, nextTick, computed, onUnmounted, reactive } from 'vue'
-import { ElCollapse, ElCollapseItem, ElButton, ElInput, ElTooltip, ElColorPicker, ElSlider, ElScrollbar, ElRadioGroup, ElRadio } from 'element-plus'
+import { ElCollapse, ElCollapseItem, ElButton, ElInput, ElTooltip, ElColorPicker, ElSlider, ElScrollbar, ElRadioGroup, ElRadio, ElSelect, ElOption } from 'element-plus'
 import 'element-plus/dist/index.css'
 import hb from '../assets/hb.svg'
 import msk from '../assets/msk.svg'
@@ -47,6 +47,15 @@ const maxHistoryLength = 20 // 限制历史记录数量
 
 // 添加 editor-container 的引用
 const containerRef = ref(null)
+
+// 添加形状相关的响应式变量
+const cropShape = ref('rect') // 默认矩形
+const shapeOptions = [
+  { label: '矩形', value: 'rect' },
+  { label: '圆形', value: 'circle' },
+  { label: '椭圆', value: 'ellipse' },
+  { label: '三角形', value: 'triangle' }
+]
 
 function handleCanvasDraw() {
   if (!canvasRef.value || !originalImage.value) return
@@ -544,6 +553,35 @@ const confirmCrop = () => {
   canvas.width = area.width
   canvas.height = area.height
 
+  // 根据不同形状进行裁剪
+  ctx.beginPath()
+  switch (cropShape.value) {
+    case 'circle':
+      const radius = Math.min(area.width, area.height) / 2
+      ctx.arc(area.width / 2, area.height / 2, radius, 0, Math.PI * 2)
+      break
+    case 'ellipse':
+      ctx.ellipse(
+        area.width / 2,
+        area.height / 2,
+        area.width / 2,
+        area.height / 2,
+        0,
+        0,
+        Math.PI * 2
+      )
+      break
+    case 'triangle':
+      ctx.moveTo(area.width / 2, 0)
+      ctx.lineTo(area.width, area.height)
+      ctx.lineTo(0, area.height)
+      ctx.closePath()
+      break
+    default: // rect
+      ctx.rect(0, 0, area.width, area.height)
+  }
+  ctx.clip()
+
   // 裁剪并绘制
   ctx.drawImage(
     canvasRef.value,
@@ -558,7 +596,7 @@ const confirmCrop = () => {
   link.click()
 }
 
-// 处理控制点拖动
+// 处控制点拖动
 const handleResizeMouseDown = (e, position) => {
   e.preventDefault()
   e.stopPropagation()
@@ -721,7 +759,7 @@ const isPointInCropArea = (x, y) => {
   )
 }
 
-// 修改马赛克绘制��法
+// 修改马赛克绘制法
 const drawMosaic = (x, y) => {
   if (!isPointInCropArea(x, y)) return
   // 在绘制前保存当前状态
@@ -743,7 +781,7 @@ const drawMosaic = (x, y) => {
     points: points
   })
 }
-// 绘制马赛克
+// 制马赛克
 const drawMosaicOperation = (ctx, size, points) => {
   points.forEach(point => {
     if (!isPointInCropArea(point.x, point.y)) return
@@ -841,7 +879,7 @@ const handleCanvasMouseDown = (e) => {
 
   isDrawing.value = true
   lastPos.value = { x, y }
-  // 开始绘制前保存状态
+  // 开始绘制前保��状态
   saveDrawState()
   // 开始新的路径
   if (currentTool.value === 'brush') {
@@ -972,7 +1010,7 @@ const redoDraw = () => {
 
 }
 
-// 修改键盘快捷键支持
+// 修改键快捷键支持
 onMounted(() => {
   window.addEventListener('keydown', (e) => {
     // Ctrl+Z 撤销
@@ -1019,6 +1057,42 @@ const handlePaste = (event) => {
       reader.readAsDataURL(file)
     }
   }
+}
+
+// 修改形状切换处理方法
+const handleShapeChange = (shape) => {
+  cropShape.value = shape
+  const area = cropArea.value
+  
+  switch (shape) {
+    case 'circle':
+      // 圆形需要保持正方形，以较小边为基准
+      const size = Math.min(area.width, area.height)
+      // 调整位置使其居中
+      area.x += (area.width - size) / 2
+      area.y += (area.height - size) / 2
+      area.width = size
+      area.height = size
+      break
+      
+    case 'ellipse':
+      // 椭圆形不需要特殊处理，保持当前尺寸
+      break
+      
+    case 'triangle':
+      // 三角形建议保持等边三角形的比例 (高:底 = √3:2)
+      const triangleHeight = area.width * Math.sqrt(3) / 2
+      // 调整位置使其居中
+      area.y += (area.height - triangleHeight) / 2
+      area.height = triangleHeight
+      break
+      
+    case 'rect':
+      // 矩形不需要特殊处理，保持当前尺寸
+      break
+  }
+  
+  updateCropBoxPosition()
 }
 
 </script>
@@ -1123,7 +1197,6 @@ const handlePaste = (event) => {
           </div>
         </div>
 
-
         <!-- 在位置控制面板后添加水印配置面板 -->
         <div class="size-panel">
           <div class="panel-title">水印设置</div>
@@ -1198,6 +1271,24 @@ const handlePaste = (event) => {
             </div>
           </div>
         </div>
+
+        <!-- 在尺寸调整面板中添加形状选择 -->
+        <div class="size-panel">
+          <div class="panel-title">形状选择</div>
+          <div class="size-inputs">
+            <div class="size-input-group">
+              <span class="size-label">形状</span>
+              <el-select v-model="cropShape" @change="handleShapeChange">
+                <el-option
+                  v-for="option in shapeOptions"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value"
+                />
+              </el-select>
+            </div>
+          </div>
+        </div>
       </el-scrollbar>
 
 
@@ -1242,8 +1333,13 @@ const handlePaste = (event) => {
             @mouseleave="handleCanvasMouseUp"></canvas>
 
           <!-- 裁剪框 -->
-          <div ref="cropBoxRef" class="crop-box" @mousedown="handleCropBoxMouseDown"
-            :style="{ pointerEvents: ['mosaic', 'brush'].includes(currentTool) ? 'none' : 'auto' }">
+          <div ref="cropBoxRef" class="crop-box" 
+            :data-shape="cropShape"
+            @mousedown="handleCropBoxMouseDown"
+            :style="{ 
+              pointerEvents: ['mosaic', 'brush'].includes(currentTool) ? 'none' : 'auto'
+            }"
+          >
             <!-- 四角的控制点 -->
             <div class="resize-handle corner top-left" @mousedown="(e) => handleResizeMouseDown(e, 'top-left')"></div>
             <div class="resize-handle corner top-right" @mousedown="(e) => handleResizeMouseDown(e, 'top-right')"></div>
@@ -1871,8 +1967,23 @@ const handlePaste = (event) => {
   border: 2px solid #fff;
   box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
   cursor: move;
-  transition: pointer-events 0.2s;
-  /* 添加过渡效果 */
+}
+
+.crop-box[data-shape="circle"] {
+  border-radius: 50%;
+}
+
+.crop-box[data-shape="ellipse"] {
+  border-radius: 50%;
+}
+
+.crop-box[data-shape="triangle"] {
+  clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+}
+
+/* 确保选择器样式正确 */
+:deep(.el-select) {
+  width: 100%;
 }
 
 /* 调整大的控制点 */
@@ -2075,7 +2186,7 @@ const handlePaste = (event) => {
   display: flex;
   align-items: center;
   gap: 12px;
-  /* 增加工具之间的间距 */
+  /* 增��工具之间的间距 */
 }
 
 .tool-item {
