@@ -68,7 +68,7 @@ const defaultConfig = {
 };
 
 // 尺寸、旋转、缩放、位置
-const config = reactive(deepClone(defaultConfig));
+let config = reactive(deepClone(defaultConfig));
 
 // 撤销恢复的历史状态
 const redoHistory = ref([]);
@@ -105,6 +105,8 @@ function handleCanvasDraw() {
   // 清空画布
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+  console.log(imagePosition.value, config);
+
   // 保存当前状态
   ctx.save();
 
@@ -114,18 +116,18 @@ function handleCanvasDraw() {
 
   // 缩放
   const baseScale = Math.min(
-    canvas.width / originalImage.value.width,
-    canvas.height / originalImage.value.height
+    canvas.width / imagePosition.value.width,
+    canvas.height / imagePosition.value.height
   );
   const finalScale = baseScale * (config.scale / 100);
 
   // 绘制图片
   ctx.drawImage(
     originalImage.value,
-    (-originalImage.value.width * finalScale) / 2,
-    (-originalImage.value.height * finalScale) / 2,
-    originalImage.value.width * finalScale,
-    originalImage.value.height * finalScale
+    (-imagePosition.value.width * finalScale) / 2,
+    (-imagePosition.value.height * finalScale) / 2,
+    imagePosition.value.width * finalScale,
+    imagePosition.value.height * finalScale
   );
 
   // 恢复状态
@@ -535,8 +537,10 @@ const initCanvas = image => {
   initWatermarkPosition();
 };
 
+const defaultImagePosition = { x: 0, y: 0, width: 0, height: 0 };
+
 // 添加图片位置状态
-const imagePosition = ref({ x: 0, y: 0, width: 0, height: 0 });
+const imagePosition = ref(deepClone(defaultImagePosition));
 
 watch(
   () => imagePosition.value,
@@ -1261,7 +1265,8 @@ const handleFolderChange = e => {
           timestamp: Date.now(),
           image: img,
           path: file.webkitRelativePath || file.name, // 保存文件路径
-          config: deepClone(defaultConfig)
+          config: null,
+          imagePosition: null
         });
       };
       img.src = e.target.result;
@@ -1276,25 +1281,26 @@ const handleFolderChange = e => {
 // 添加文件选择方法
 const selectFile = key => {
   // 先保存就配置到到imageFiles中
-  const oldFile = imageFiles.value.find(file => file.key === currentFileIndex.value);
-  if (oldFile) {
-    oldFile.config = deepClone(config.value);
+  const index = imageFiles.value.findIndex(file => file.key === currentFileIndex.value);
+  console.log(index, imageFiles.value[index]);
+
+  if (index !== -1) {
+    imageFiles.value[index].config = deepClone(config);
+    imageFiles.value[index].imagePosition = deepClone(imagePosition.value);
   }
   currentFileIndex.value = key;
   const file = imageFiles.value.find(file => file.key === key);
-  config.value = deepClone(config);
-  console.log(config.value);
-  
+  config = file.config ? deepClone(file.config) : deepClone(defaultConfig);
+  console.log(config.scale);
+  imagePosition.value = file.imagePosition ? deepClone(file.imagePosition) : deepClone(defaultImagePosition);
   originalImage.value = file.image;
-  
-  nextTick(() => {
 
+  nextTick(() => {
     if (file.config) {
       handleCanvasDraw();
-    }else{
-    initCanvas(file.image);
+    } else {
+      initCanvas(file.image);
     }
-
   });
 };
 
@@ -1331,7 +1337,8 @@ const handleFileDrop = e => {
           timestamp: Date.now(),
           image: img,
           key: nanoid(),
-          config: null
+          config: null,
+          imagePosition: null
         });
       };
       img.src = e.target.result;
@@ -1361,7 +1368,8 @@ const handleFileChange = e => {
           url: e.target.result,
           timestamp: Date.now(),
           image: img,
-          config: null
+          config: null,
+          imagePosition: null
         });
       };
       img.src = e.target.result;
@@ -1380,18 +1388,10 @@ const uploadInput = ref(null);
   <div class="container">
     <!-- 左侧导航 -->
     <div class="nav-panel">
-      <div
-        class="nav-item"
-        :class="{ active: currentNav === 'files' }"
-        @click="currentNav = 'files'"
-      >
+      <div class="nav-item" :class="{ active: currentNav === 'files' }" @click="currentNav = 'files'">
         <Folder style="width: 1em; height: 1em;"></Folder>
       </div>
-      <div
-        class="nav-item"
-        :class="{ active: currentNav === 'configs' }"
-        @click="currentNav = 'configs'"
-      >
+      <div class="nav-item" :class="{ active: currentNav === 'configs' }" @click="currentNav = 'configs'">
         <Setting style="width: 1em; height: 1em;"></Setting>
       </div>
     </div>
@@ -1414,46 +1414,22 @@ const uploadInput = ref(null);
               </el-icon>添加文件夹
             </el-button>
             <!-- 添加隐藏的文件夹输入 -->
-            <input
-              ref="folderInput"
-              type="file"
-              accept="image/*"
-              @change="handleFolderChange"
-              style="display: none"
-              webkitdirectory
-              multiple
-            />
+            <input ref="folderInput" type="file" accept="image/*" @change="handleFolderChange" style="display: none"
+              webkitdirectory multiple />
             <!-- 添加文件输入框 -->
-            <input
-              ref="fileInput"
-              type="file"
-              accept="image/*"
-              @change="handleFileChange"
-              style="display: none"
-              multiple
-            />
+            <input ref="fileInput" type="file" accept="image/*" @change="handleFileChange" style="display: none"
+              multiple />
           </div>
         </div>
         <div class="list-content">
-          <div
-            v-for="file in imageFiles"
-            :key="file.key"
-            class="list-item"
-            :class="{ active: currentFileIndex === file.key }"
-            @click="selectFile(file.key)"
-          >
+          <div v-for="file in imageFiles" :key="file.key" class="list-item"
+            :class="{ active: currentFileIndex === file.key }" @click="selectFile(file.key)">
             <img :src="file.url" class="item-thumb" />
             <div class="item-info">
               <span class="item-name">{{ file.name }}</span>
               <span class="item-time">{{ new Date(file.timestamp).toLocaleString() }}</span>
             </div>
-            <el-button
-              type="danger"
-              size="small"
-              circle
-              @click.stop="removeFile(file.key)"
-              style="width: 2.2em;"
-            >
+            <el-button type="danger" size="small" circle @click.stop="removeFile(file.key)" style="width: 2.2em;">
               <el-icon>
                 <Delete />
               </el-icon>
@@ -1494,32 +1470,13 @@ const uploadInput = ref(null);
       <!-- 编辑器容器 -->
       <div ref="containerRef" class="editor-container">
         <!-- 修改上传区域部分 -->
-        <div
-          v-if="showUploadArea"
-          class="upload-area"
-          @dragover.prevent
-          @drop.prevent="handleFileDrop"
-        >
-          <input
-            ref="uploadInput"
-            type="file"
-            accept="image/*"
-            @change="handleFileChange"
-            class="file-input"
-            id="upload-input"
-            multiple
-          />
+        <div v-if="showUploadArea" class="upload-area" @dragover.prevent @drop.prevent="handleFileDrop">
+          <input ref="uploadInput" type="file" accept="image/*" @change="handleFileChange" class="file-input"
+            id="upload-input" multiple />
           <label for="upload-input" class="upload-content" @click="handleUploadClick">
             <div class="upload-icon">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="48"
-                height="48"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
+              <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2">
                 <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7" />
                 <polyline points="17 8 12 3 7 8" />
                 <line x1="12" y1="3" x2="12" y2="15" />
@@ -1534,58 +1491,27 @@ const uploadInput = ref(null);
         </div>
 
         <template v-else>
-          <canvas
-            ref="canvasRef"
-            class="editor-canvas"
-            :class="{ drawing: isDrawing }"
-            @mousedown="handleCanvasMouseDown"
-            @mousemove="handleCanvasMouseMove"
-            @mouseup="handleCanvasMouseUp"
-            @mouseleave="handleCanvasMouseUp"
-          ></canvas>
+          <canvas ref="canvasRef" class="editor-canvas" :class="{ drawing: isDrawing }"
+            @mousedown="handleCanvasMouseDown" @mousemove="handleCanvasMouseMove" @mouseup="handleCanvasMouseUp"
+            @mouseleave="handleCanvasMouseUp"></canvas>
 
           <!-- 裁剪框 -->
-          <div
-            ref="cropBoxRef"
-            class="crop-box"
-            :data-shape="cropShape"
-            @mousedown="handleCropBoxMouseDown"
-            :style="{ 
-              pointerEvents: ['mosaic', 'brush'].includes(currentTool) ? 'none' : 'auto'
-            }"
-          >
+          <div ref="cropBoxRef" class="crop-box" :data-shape="cropShape" @mousedown="handleCropBoxMouseDown" :style="{
+            pointerEvents: ['mosaic', 'brush'].includes(currentTool) ? 'none' : 'auto'
+          }">
             <!-- 四角的控制点 -->
-            <div
-              class="resize-handle corner top-left"
-              @mousedown="(e) => handleResizeMouseDown(e, 'top-left')"
-            ></div>
-            <div
-              class="resize-handle corner top-right"
-              @mousedown="(e) => handleResizeMouseDown(e, 'top-right')"
-            ></div>
-            <div
-              class="resize-handle corner bottom-left"
-              @mousedown="(e) => handleResizeMouseDown(e, 'bottom-left')"
-            ></div>
-            <div
-              class="resize-handle corner bottom-right"
-              @mousedown="(e) => handleResizeMouseDown(e, 'bottom-right')"
-            ></div>
+            <div class="resize-handle corner top-left" @mousedown="(e) => handleResizeMouseDown(e, 'top-left')"></div>
+            <div class="resize-handle corner top-right" @mousedown="(e) => handleResizeMouseDown(e, 'top-right')"></div>
+            <div class="resize-handle corner bottom-left" @mousedown="(e) => handleResizeMouseDown(e, 'bottom-left')">
+            </div>
+            <div class="resize-handle corner bottom-right" @mousedown="(e) => handleResizeMouseDown(e, 'bottom-right')">
+            </div>
 
             <!-- 边的中点控制点 -->
             <div class="resize-handle edge top" @mousedown="(e) => handleResizeMouseDown(e, 'top')"></div>
-            <div
-              class="resize-handle edge right"
-              @mousedown="(e) => handleResizeMouseDown(e, 'right')"
-            ></div>
-            <div
-              class="resize-handle edge bottom"
-              @mousedown="(e) => handleResizeMouseDown(e, 'bottom')"
-            ></div>
-            <div
-              class="resize-handle edge left"
-              @mousedown="(e) => handleResizeMouseDown(e, 'left')"
-            ></div>
+            <div class="resize-handle edge right" @mousedown="(e) => handleResizeMouseDown(e, 'right')"></div>
+            <div class="resize-handle edge bottom" @mousedown="(e) => handleResizeMouseDown(e, 'bottom')"></div>
+            <div class="resize-handle edge left" @mousedown="(e) => handleResizeMouseDown(e, 'left')"></div>
           </div>
         </template>
       </div>
@@ -1593,41 +1519,25 @@ const uploadInput = ref(null);
       <!-- 底部工具栏 -->
       <div v-if="originalImage" class="bottom-toolbar">
         <el-tooltip content="马赛克" placement="top">
-          <div
-            class="tool-item"
-            :class="{ active: currentTool === 'mosaic' }"
-            @click="toggleTool('mosaic')"
-          >
+          <div class="tool-item" :class="{ active: currentTool === 'mosaic' }" @click="toggleTool('mosaic')">
             <img :src="msk" alt="马赛克" style="width: 1em; height: 1em;" />
           </div>
         </el-tooltip>
 
         <el-tooltip content="画笔" placement="top">
-          <div
-            class="tool-item"
-            :class="{ active: currentTool === 'brush' }"
-            @click="toggleTool('brush')"
-          >
+          <div class="tool-item" :class="{ active: currentTool === 'brush' }" @click="toggleTool('brush')">
             <img :src="hb" alt="画笔" style="width: 1em; height: 1em;" />
           </div>
         </el-tooltip>
 
         <el-tooltip content="撤销" placement="top">
-          <div
-            class="tool-item"
-            :class="{ disabled: !drawHistory.length }"
-            @click="drawHistory.length && undoDraw()"
-          >
+          <div class="tool-item" :class="{ disabled: !drawHistory.length }" @click="drawHistory.length && undoDraw()">
             <img :src="undo" alt="撤销" style="width: 1em; height: 1em;" />
           </div>
         </el-tooltip>
 
         <el-tooltip content="恢复" placement="top">
-          <div
-            class="tool-item"
-            :class="{ disabled: !redoHistory.length }"
-            @click="redoHistory.length && redoDraw()"
-          >
+          <div class="tool-item" :class="{ disabled: !redoHistory.length }" @click="redoHistory.length && redoDraw()">
             <img :src="redo" alt="恢复" style="width: 1em; height: 1em;" />
           </div>
         </el-tooltip>
@@ -1644,12 +1554,8 @@ const uploadInput = ref(null);
             <div class="size-input-group">
               <span class="size-label">形状</span>
               <el-select v-model="cropShape" @change="handleShapeChange">
-                <el-option
-                  v-for="option in shapeOptions"
-                  :key="option.value"
-                  :label="option.label"
-                  :value="option.value"
-                />
+                <el-option v-for="option in shapeOptions" :key="option.value" :label="option.label"
+                  :value="option.value" />
               </el-select>
             </div>
           </div>
@@ -1660,23 +1566,15 @@ const uploadInput = ref(null);
           <div class="size-inputs">
             <div class="size-input-group">
               <span class="size-label">宽度</span>
-              <el-input
-                v-model.number="cropArea.width"
-                type="number"
-                :max="canvasRef?.width || 0"
-                @input="value => handleSizeChange('width', value)"
-              >
+              <el-input v-model.number="cropArea.width" type="number" :max="canvasRef?.width || 0"
+                @input="value => handleSizeChange('width', value)">
                 <template #append>px</template>
               </el-input>
             </div>
             <div class="size-input-group">
               <span class="size-label">高度</span>
-              <el-input
-                v-model.number="cropArea.height"
-                type="number"
-                :max="canvasRef?.height || 0"
-                @input="value => handleSizeChange('height', value)"
-              >
+              <el-input v-model.number="cropArea.height" type="number" :max="canvasRef?.height || 0"
+                @input="value => handleSizeChange('height', value)">
                 <template #append>px</template>
               </el-input>
             </div>
@@ -1689,25 +1587,15 @@ const uploadInput = ref(null);
           <div class="size-inputs">
             <div class="size-input-group">
               <span class="size-label">X轴</span>
-              <el-input
-                :model-value="Math.round(cropArea.x - imagePosition.x)"
-                type="number"
-                :min="0"
-                :max="imagePosition.width - cropArea.width"
-                @input="value => handlePositionChange('x', value)"
-              >
+              <el-input :model-value="Math.round(cropArea.x - imagePosition.x)" type="number" :min="0"
+                :max="imagePosition.width - cropArea.width" @input="value => handlePositionChange('x', value)">
                 <template #append>px</template>
               </el-input>
             </div>
             <div class="size-input-group">
               <span class="size-label">Y轴</span>
-              <el-input
-                :model-value="Math.round(cropArea.y - imagePosition.y)"
-                type="number"
-                :min="0"
-                :max="imagePosition.height - cropArea.height"
-                @input="value => handlePositionChange('y', value)"
-              >
+              <el-input :model-value="Math.round(cropArea.y - imagePosition.y)" type="number" :min="0"
+                :max="imagePosition.height - cropArea.height" @input="value => handlePositionChange('y', value)">
                 <template #append>px</template>
               </el-input>
             </div>
@@ -1734,13 +1622,7 @@ const uploadInput = ref(null);
           <div class="size-inputs">
             <div class="size-input-group">
               <span class="size-label">角度</span>
-              <el-input
-                v-model.number="config.rotateAngle"
-                type="number"
-                :min="-360"
-                :max="360"
-                @input="handleRotate"
-              >
+              <el-input v-model.number="config.rotateAngle" type="number" :min="-360" :max="360" @input="handleRotate">
                 <template #append>°</template>
               </el-input>
             </div>
@@ -1758,13 +1640,7 @@ const uploadInput = ref(null);
           <div class="size-inputs">
             <div class="size-input-group">
               <span class="size-label">缩放</span>
-              <el-input
-                v-model.number="config.scale"
-                type="number"
-                :min="10"
-                :max="200"
-                @input="handleScale"
-              >
+              <el-input v-model.number="config.scale" type="number" :min="10" :max="200" @input="handleScale">
                 <template #append>%</template>
               </el-input>
             </div>
@@ -1786,11 +1662,7 @@ const uploadInput = ref(null);
             <!-- 水印文本输入 -->
             <div class="size-input-group">
               <span class="size-label">文本</span>
-              <el-input
-                v-model="config.watermark.text"
-                placeholder="请输入水印文字"
-                @change="updateWatermark"
-              />
+              <el-input v-model="config.watermark.text" placeholder="请输入水印文字" @change="updateWatermark" />
             </div>
 
             <!-- 水印模式 -->
@@ -1806,25 +1678,15 @@ const uploadInput = ref(null);
             <template v-if="config.watermark.mode === 'single'">
               <div class="size-input-group">
                 <span class="size-label">X轴</span>
-                <el-input
-                  v-model.number="config.watermark.position.x"
-                  type="number"
-                  :min="0"
-                  :max="canvasRef?.width || 0"
-                  @input="updateWatermark"
-                >
+                <el-input v-model.number="config.watermark.position.x" type="number" :min="0"
+                  :max="canvasRef?.width || 0" @input="updateWatermark">
                   <template #append>px</template>
                 </el-input>
               </div>
               <div class="size-input-group">
                 <span class="size-label">Y轴</span>
-                <el-input
-                  v-model.number="config.watermark.position.y"
-                  type="number"
-                  :min="0"
-                  :max="canvasRef?.height || 0"
-                  @input="updateWatermark"
-                >
+                <el-input v-model.number="config.watermark.position.y" type="number" :min="0"
+                  :max="canvasRef?.height || 0" @input="updateWatermark">
                   <template #append>px</template>
                 </el-input>
               </div>
@@ -1847,13 +1709,8 @@ const uploadInput = ref(null);
             <!-- 其他印设置保持不变 -->
             <div class="size-input-group">
               <span class="size-label">大小</span>
-              <el-input
-                v-model.number="config.watermark.size"
-                type="number"
-                :min="12"
-                :max="72"
-                @input="updateWatermark"
-              >
+              <el-input v-model.number="config.watermark.size" type="number" :min="12" :max="72"
+                @input="updateWatermark">
                 <template #append>px</template>
               </el-input>
             </div>
@@ -1861,23 +1718,14 @@ const uploadInput = ref(null);
             <!-- 水印颜色 -->
             <div class="size-input-group color-picker-group">
               <span class="size-label">颜色</span>
-              <el-color-picker
-                v-model="config.watermark.color"
-                :predefine="predefineColors"
-                show-alpha
-                @change="handleWatermarkColorChange"
-              />
+              <el-color-picker v-model="config.watermark.color" :predefine="predefineColors" show-alpha
+                @change="handleWatermarkColorChange" />
             </div>
 
             <!-- 水印透明度 -->
             <div class="size-input-group">
               <span class="size-label">透明度</span>
-              <el-slider
-                v-model="config.watermark.opacity"
-                :min="0"
-                :max="100"
-                @input="updateWatermark"
-              />
+              <el-slider v-model="config.watermark.opacity" :min="0" :max="100" @input="updateWatermark" />
             </div>
           </div>
         </div>
@@ -1888,11 +1736,7 @@ const uploadInput = ref(null);
           <div class="size-inputs">
             <div class="size-input-group color-picker-group">
               <span class="size-label">背景色</span>
-              <el-color-picker
-                v-model="config.export.backgroundColor"
-                :predefine="predefineColors"
-                show-alpha
-              />
+              <el-color-picker v-model="config.export.backgroundColor" :predefine="predefineColors" show-alpha />
             </div>
             <!-- 显��已保存的配置列表 -->
             <div v-if="savedConfigs.length" class="saved-configs">
@@ -2399,7 +2243,7 @@ const uploadInput = ref(null);
   padding: 8px;
 }
 
-.el-button + .el-button {
+.el-button+.el-button {
   margin-left: 0px;
 }
 
@@ -2542,7 +2386,8 @@ const uploadInput = ref(null);
 
 /* 椭圆形裁剪框 */
 .crop-box[data-shape="ellipse"] {
-  border-radius: 50% / 50%; /* 使用百分比值使其能够适应不同的宽高比 */
+  border-radius: 50% / 50%;
+  /* 使用百分比值使其能够适应不同的宽高比 */
 }
 
 /* 确保选择器样式正确 */
@@ -2912,7 +2757,8 @@ const uploadInput = ref(null);
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 12px; /* 减小内边距 */
+  padding: 8px 12px;
+  /* 减小内边距 */
   border: 1px solid #f0f0f0;
   border-radius: 4px;
   margin-bottom: 8px;
@@ -2998,7 +2844,8 @@ const uploadInput = ref(null);
 /* 调整删除按钮样式 */
 .list-item .el-button {
   padding: 6px;
-  min-width: unset; /* 移除最小宽度 */
+  min-width: unset;
+  /* 移除最小宽度 */
 }
 
 /* 确保图标在圆形按钮中居中 */
