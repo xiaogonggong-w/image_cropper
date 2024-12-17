@@ -52,9 +52,7 @@ const containerRef = ref(null)
 const cropShape = ref('rect') // 默认矩形
 const shapeOptions = [
   { label: '矩形', value: 'rect' },
-  { label: '圆形', value: 'circle' },
-  { label: '椭圆', value: 'ellipse' },
-  { label: '三角形', value: 'triangle' }
+  { label: '圆形', value: 'circle' }
 ]
 
 function handleCanvasDraw() {
@@ -216,7 +214,7 @@ const handleWatermarkPosition = (position) => {
 const initWatermarkPosition = () => {
   if (!cropArea.value) return
 
-  // 设置水印位置为裁剪框中心
+  // 设置水印���置为裁剪框中心
   config.watermark.position = {
     x: cropArea.value.x + cropArea.value.width / 2,
     y: cropArea.value.y + cropArea.value.height / 2
@@ -418,7 +416,7 @@ const initCanvas = (image) => {
   const canvas = canvasRef.value
   const container = containerRef.value
 
-  // 设置画布大小
+  // 置画布大小
   canvas.width = container.offsetWidth
   canvas.height = container.offsetHeight
 
@@ -642,7 +640,7 @@ const handleResizeMouseDown = (e, position) => {
           newWidth = Math.max(minSize, startWidth + deltaX)
         }
         if (deltaY < startHeight - minSize) {
-          // 只处理上边界
+          // 只处理边界
           newY = Math.max(0, startTop + deltaY)
           newHeight = startHeight - (newY - startTop)
         }
@@ -731,8 +729,8 @@ const toggleTool = (tool) => {
     cropBoxRef.value.style.pointerEvents = 'auto'
   } else {
     currentTool.value = tool
-    if (['mosaic', 'brush'].includes(tool)) {  // 马赛克和画笔工具都需要禁用裁剪框
-      console.log('进来来没')
+    if (['mosaic', 'brush'].includes(tool)) {  // 马赛克和画笔工具都需禁用裁剪框
+      console.log('来来没')
       canvasRef.value.style.cursor = 'crosshair'
       cropBoxRef.value.style.pointerEvents = 'none'
 
@@ -879,7 +877,7 @@ const handleCanvasMouseDown = (e) => {
 
   isDrawing.value = true
   lastPos.value = { x, y }
-  // 开始绘制前保��状态
+  // 开始绘制前保存状态
   saveDrawState()
   // 开始新的路径
   if (currentTool.value === 'brush') {
@@ -941,7 +939,7 @@ const getLinePoints = (x1, y1, x2, y2) => {
   return points
 }
 
-// 获区域平均颜色
+// 获区域平均��色
 const getAverageColor = (data) => {
   let r = 0, g = 0, b = 0
   const count = data.length / 4
@@ -1061,36 +1059,20 @@ const handlePaste = (event) => {
 
 // 修改形状切换处理方法
 const handleShapeChange = (shape) => {
-  cropShape.value = shape
   const area = cropArea.value
+  cropShape.value = shape
   
-  switch (shape) {
-    case 'circle':
-      // 圆形需要保持正方形，以较小边为基准
-      const size = Math.min(area.width, area.height)
-      // 调整位置使其居中
-      area.x += (area.width - size) / 2
-      area.y += (area.height - size) / 2
-      area.width = size
-      area.height = size
-      break
-      
-    case 'ellipse':
-      // 椭圆形不需要特殊处理，保持当前尺寸
-      break
-      
-    case 'triangle':
-      // 三角形建议保持等边三角形的比例 (高:底 = √3:2)
-      const triangleHeight = area.width * Math.sqrt(3) / 2
-      // 调整位置使其居中
-      area.y += (area.height - triangleHeight) / 2
-      area.height = triangleHeight
-      break
-      
-    case 'rect':
-      // 矩形不需要特殊处理，保持当前尺寸
-      break
+  // 只在切换到圆形时进行调整
+  if (shape === 'circle') {
+    // 圆形需要保持正方形，以较小边为基准
+    const size = Math.min(area.width, area.height)
+    // 调整位置使其居中
+    area.x += (area.width - size) / 2
+    area.y += (area.height - size) / 2
+    area.width = size
+    area.height = size
   }
+  // 切换到矩形时不需要特殊处理
   
   updateCropBoxPosition()
 }
@@ -1102,6 +1084,23 @@ const handleShapeChange = (shape) => {
     <!-- 侧配置面板 -->
     <div class="tools-panel">
       <el-scrollbar :always="true">
+       <!-- 在尺寸调整面板中添加形状选择 -->
+        <div class="size-panel">
+          <div class="panel-title">裁剪框形状选择</div>
+          <div class="size-inputs">
+            <div class="size-input-group">
+              <span class="size-label">形状</span>
+              <el-select v-model="cropShape" @change="handleShapeChange">
+                <el-option
+                  v-for="option in shapeOptions"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value"
+                />
+              </el-select>
+            </div>
+          </div>
+        </div>
         <!-- 尺寸调整输入框 -->
         <div class="size-panel">
           <div class="panel-title">尺寸调整</div>
@@ -1248,7 +1247,7 @@ const handleShapeChange = (shape) => {
               </div>
             </template>
 
-            <!-- 其他水印设置保持不变 -->
+            <!-- 其他印设置保持不变 -->
             <div class="size-input-group">
               <span class="size-label">大小</span>
               <el-input v-model.number="config.watermark.size" type="number" :min="12" :max="72"
@@ -1272,23 +1271,7 @@ const handleShapeChange = (shape) => {
           </div>
         </div>
 
-        <!-- 在尺寸调整面板中添加形状选择 -->
-        <div class="size-panel">
-          <div class="panel-title">形状选择</div>
-          <div class="size-inputs">
-            <div class="size-input-group">
-              <span class="size-label">形状</span>
-              <el-select v-model="cropShape" @change="handleShapeChange">
-                <el-option
-                  v-for="option in shapeOptions"
-                  :key="option.value"
-                  :label="option.label"
-                  :value="option.value"
-                />
-              </el-select>
-            </div>
-          </div>
-        </div>
+       
       </el-scrollbar>
 
 
@@ -1416,7 +1399,7 @@ const handleShapeChange = (shape) => {
   background: #f5f5f5;
 }
 
-/* 图标样式 */
+/* 标样式 */
 .icon {
   display: inline-flex;
   align-items: center;
@@ -1969,16 +1952,14 @@ const handleShapeChange = (shape) => {
   cursor: move;
 }
 
+/* 圆形裁剪框 */
 .crop-box[data-shape="circle"] {
   border-radius: 50%;
 }
 
+/* 椭圆形裁剪框 */
 .crop-box[data-shape="ellipse"] {
-  border-radius: 50%;
-}
-
-.crop-box[data-shape="triangle"] {
-  clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+  border-radius: 50% / 50%; /* 使用百分比值使其能够适应不同的宽高比 */
 }
 
 /* 确保选择器样式正确 */
@@ -2186,7 +2167,7 @@ const handleShapeChange = (shape) => {
   display: flex;
   align-items: center;
   gap: 12px;
-  /* 增��工具之间的间距 */
+  /* 增加工具之间间距 */
 }
 
 .tool-item {
