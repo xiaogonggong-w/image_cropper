@@ -30,6 +30,7 @@ import undo from "../assets/undo.svg";
 import { Folder, Setting, Plus, Delete } from "@element-plus/icons-vue";
 import { nanoid } from "nanoid";
 import { deepClone } from "./util";
+import exportIcon from "../assets/export.svg"; // 导入批量导出图标
 
 const canvasRef = ref(null);
 const cropBoxRef = ref(null);
@@ -206,8 +207,8 @@ const updateImagePosition = () => {
   imagePosition.value = {
     x: (canvas.width - rotatedWidth) / 2,
     y: (canvas.height - rotatedHeight) / 2,
-    width: rotatedWidth,
-    height: rotatedHeight,
+    width: image.width,
+    height: image.height,
     scale: finalScale
   };
 };
@@ -509,8 +510,8 @@ const initCanvas = image => {
   imagePosition.value = {
     x,
     y,
-    width: scaledWidth,
-    height: scaledHeight,
+    width: image.width,
+    height: image.height,
     scale
   };
 
@@ -545,7 +546,7 @@ const imagePosition = ref(deepClone(defaultImagePosition));
 watch(
   () => imagePosition.value,
   newVal => {
-    console.log("imagePosition", newVal);
+    console.log("imagePosition", newVal, originalImage.value.width);
   }
 );
 
@@ -646,7 +647,7 @@ const confirmCrop = () => {
   const sourceWidth = Math.min(img.width - sourceX, area.width);
   const sourceHeight = Math.min(img.height - sourceY, area.height);
 
-  // 计算图片在画布上的绘制位置
+  // 计算图片在画布上的绘��位置
   const destX = Math.max(0, img.x - area.x);
   const destY = Math.max(0, img.y - area.y);
 
@@ -1382,6 +1383,59 @@ const handleFileChange = e => {
 
 // 修改文件输入框的引用名称
 const uploadInput = ref(null);
+
+// 添加批量导出方法
+const batchExport = () => {
+    imageFiles.value.forEach(file => {
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        
+        // 设置画布大小
+        const baseScale = Math.min(
+            canvas.width / file.image.width,
+            canvas.height / file.image.height
+        );
+        const finalScale = baseScale * (config.scale / 100);
+        
+        const scaledWidth = file.image.width * finalScale;
+        const scaledHeight = file.image.height * finalScale;
+
+        canvas.width = scaledWidth;
+        canvas.height = scaledHeight;
+
+        // 绘制图片到画布
+        ctx.save();
+        ctx.translate(scaledWidth / 2, scaledHeight / 2);
+        ctx.rotate((config.rotateAngle * Math.PI) / 180);
+        ctx.drawImage(file.image, -scaledWidth / 2, -scaledHeight / 2, scaledWidth, scaledHeight);
+        ctx.restore();
+
+        // 绘制水印
+        if (config.watermark.text) {
+            drawWatermarkOnCanvas(ctx, file.image, scaledWidth, scaledHeight);
+        }
+
+        // 创建下载链接
+        const link = document.createElement("a");
+        link.download = `${file.name}.png`; // 设置下载文件名
+        link.href = canvas.toDataURL(); // 获取图片数据
+        link.click(); // 触发下载
+    });
+};
+
+// 绘制水印到画布的辅助函数
+const drawWatermarkOnCanvas = (ctx, image, width, height) => {
+    ctx.save();
+    ctx.font = `${config.watermark.size}px Arial`;
+    ctx.fillStyle = config.watermark.color;
+    ctx.globalAlpha = config.watermark.opacity / 100;
+
+    const x = config.watermark.position.x;
+    const y = config.watermark.position.y;
+
+    ctx.fillText(config.watermark.text, x, y);
+    ctx.restore();
+};
 </script>
 
 <template>
@@ -1540,6 +1594,13 @@ const uploadInput = ref(null);
           <div class="tool-item" :class="{ disabled: !redoHistory.length }" @click="redoHistory.length && redoDraw()">
             <img :src="redo" alt="恢复" style="width: 1em; height: 1em;" />
           </div>
+        </el-tooltip>
+
+        <!-- 在底部工具栏中添加批量导出按钮 -->
+        <el-tooltip content="批量导出" placement="top">
+            <div class="tool-item" @click="batchExport">
+                <img :src="exportIcon" alt="批量导出" style="width: 1em; height: 1em;" />
+            </div>
         </el-tooltip>
       </div>
     </div>
