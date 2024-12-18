@@ -46,7 +46,8 @@ const cropArea = ref({
   width: 0,
   height: 0,
   isDragging: false,
-  isResizing: false
+  isResizing: false,
+  cropShape: "rect"
 });
 // 添加画笔相关状态
 const brushColor = ref("#FF0000"); // 默认色
@@ -85,7 +86,6 @@ const maxHistoryLength = 20; // 限制历史记录数量
 const containerRef = ref(null);
 
 // 添加形状相关的响应式变量
-const cropShape = ref("rect"); // 默认矩形
 const shapeOptions = [
   { label: "矩形", value: "rect" },
   { label: "圆形", value: "circle" }
@@ -543,7 +543,6 @@ const initCanvas = image => {
     const index = imageFiles.value.findIndex(file => file.key === currentFileIndex.value);
     if (index !== -1) {
       imageFiles.value[index].cropInfo = {
-        shape: cropShape.value,
         area: deepClone(cropArea.value)
       };
     }
@@ -564,7 +563,7 @@ const imagePosition = ref(deepClone(defaultImagePosition));
 watch(
   () => imagePosition.value,
   newVal => {
-    console.log("imagePosition", newVal, originalImage.value.width);
+     
   }
 );
 
@@ -636,7 +635,7 @@ const confirmCrop = () => {
 
   // 根据不同形状进行裁剪
   ctx.beginPath();
-  switch (cropShape.value) {
+  switch (cropArea.cropShape) {
     case "circle":
       const radius = Math.min(area.width, area.height) / 2;
       ctx.arc(area.width / 2, area.height / 2, radius, 0, Math.PI * 2);
@@ -1176,7 +1175,7 @@ const handlePaste = event => {
 // 修改形状切换处理方法
 const handleShapeChange = shape => {
   const area = cropArea.value;
-  cropShape.value = shape;
+  area.cropShape = shape;
 
   // 只在切换到圆形时进行调整
   if (shape === "circle") {
@@ -1192,7 +1191,6 @@ const handleShapeChange = shape => {
     const index = imageFiles.value.findIndex(file => file.key === currentFileIndex.value);
     if (index !== -1) {
       imageFiles.value[index].cropInfo = {
-        shape: cropShape.value,
         area: deepClone(cropArea.value)
       };
     }
@@ -1314,7 +1312,6 @@ const selectFile = key => {
       imageFiles.value[index].config = deepClone(config);
       imageFiles.value[index].imagePosition = deepClone(imagePosition.value);
       imageFiles.value[index].cropInfo = {
-        shape: cropShape.value,
         area: deepClone(cropArea.value)
       };
     }
@@ -1330,7 +1327,6 @@ const selectFile = key => {
   
   // 恢复裁剪框信息
   if (file.cropInfo) {
-    cropShape.value = file.cropInfo.shape;
     cropArea.value = deepClone(file.cropInfo.area);
   }
   
@@ -1706,7 +1702,7 @@ const drawWatermarkOnCanvas = (ctx, image, width, height) => {
             @mouseleave="handleCanvasMouseUp"></canvas>
 
           <!-- 裁剪框 -->
-          <div ref="cropBoxRef" class="crop-box" :data-shape="cropShape" @mousedown="handleCropBoxMouseDown" :style="{
+          <div ref="cropBoxRef" class="crop-box" :data-shape="cropArea.cropShape" @mousedown="handleCropBoxMouseDown" :style="{
             pointerEvents: ['mosaic', 'brush'].includes(currentTool) ? 'none' : 'auto'
           }">
             <!-- 四角的控制点 -->
@@ -1770,7 +1766,7 @@ const drawWatermarkOnCanvas = (ctx, image, width, height) => {
           <div class="size-inputs">
             <div class="size-input-group">
               <span class="size-label">形状</span>
-              <el-select v-model="cropShape" @change="handleShapeChange">
+              <el-select v-model="cropArea.cropShape" @change="handleShapeChange">
                 <el-option v-for="option in shapeOptions" :key="option.value" :label="option.label"
                   :value="option.value" />
               </el-select>
