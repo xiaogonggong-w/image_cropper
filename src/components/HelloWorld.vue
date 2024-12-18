@@ -1201,7 +1201,7 @@ const handleShapeChange = shape => {
   updateCropBoxPosition();
 };
 
-// 添加配置管理相关���状态和方法
+// 添加配置管理相关�����状态和方法
 const savedConfigs = ref([]);
 const currentConfigName = ref("");
 
@@ -1451,24 +1451,85 @@ const batchExport = async () => {
       area: cropArea.value
     }
     const area = cropInfo.area
+    const imgConfig = file.config || config
+    const imgPosition = file.imagePosition || imagePosition.value
 
-    // 设置输出画布大小
+    // 设置画布大小为容器大小
     canvas.width = container.offsetWidth
     canvas.height = container.offsetHeight
 
     // 先填充背景色
-    ctx.fillStyle = file.config?.export?.backgroundColor || config.export.backgroundColor
+    ctx.fillStyle = imgConfig.export.backgroundColor
     ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-    // 根据不同形状进行裁剪
-    ctx.beginPath()
+    // 绘制旋转和缩放后的图片
+    ctx.save()
+    ctx.translate(canvas.width / 2, canvas.height / 2)
+    ctx.rotate((imgConfig.rotateAngle * Math.PI) / 180)
+    
+    const baseScale = Math.min(
+      canvas.width / file.image.width,
+      canvas.height / file.image.height
+    )
+    const finalScale = baseScale * (imgConfig.scale / 100)
+
+    ctx.drawImage(
+      file.image,
+      (-file.image.width * finalScale) / 2,
+      (-file.image.height * finalScale) / 2,
+      file.image.width * finalScale,
+      file.image.height * finalScale
+    )
+    ctx.restore()
+
+    // 如果有水印，添加水印
+    if (imgConfig.watermark?.text) {
+      const watermarkConfig = imgConfig.watermark
+      ctx.save()
+      ctx.font = `${watermarkConfig.size}px Arial`
+      ctx.fillStyle = watermarkConfig.color
+      ctx.globalAlpha = watermarkConfig.opacity / 100
+
+      if (watermarkConfig.mode === 'single') {
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(
+          watermarkConfig.text,
+          watermarkConfig.position.x,
+          watermarkConfig.position.y
+        )
+      } else {
+        ctx.textAlign = 'left'
+        ctx.textBaseline = 'top'
+        const textWidth = ctx.measureText(watermarkConfig.text).width
+        const gap = textWidth + 50
+
+        for (let y = 0; y < canvas.height; y += gap) {
+          for (let x = 0; x < canvas.width; x += gap) {
+            ctx.fillText(watermarkConfig.text, x, y)
+          }
+        }
+      }
+      ctx.restore()
+    }
+
+    // 创建裁剪画布
+    const cropCanvas = document.createElement("canvas")
+    const cropCtx = cropCanvas.getContext("2d")
+    
+    // 设置裁剪画布大小为裁剪区域大小
+    cropCanvas.width = area.width
+    cropCanvas.height = area.height
+
+    // 根据形状裁剪
+    cropCtx.beginPath()
     switch (cropInfo.shape) {
       case "circle":
         const radius = Math.min(area.width, area.height) / 2
-        ctx.arc(area.width / 2, area.height / 2, radius, 0, Math.PI * 2)
+        cropCtx.arc(area.width / 2, area.height / 2, radius, 0, Math.PI * 2)
         break
       case "ellipse":
-        ctx.ellipse(
+        cropCtx.ellipse(
           area.width / 2,
           area.height / 2,
           area.width / 2,
@@ -1479,71 +1540,20 @@ const batchExport = async () => {
         )
         break
       default:
-        // rect
-        ctx.rect(0, 0, area.width, area.height)
+        cropCtx.rect(0, 0, area.width, area.height)
     }
-    ctx.clip()
+    cropCtx.clip()
 
-
-    // 计算图片在裁剪框中的相对位置
-    const sourceX = Math.max(0, area.x - imgPosition.x)
-    const sourceY = Math.max(0, area.y - imgPosition.y)
-    const sourceWidth = Math.min(imgPosition.rotatedWidth - sourceX, area.width)
-    const sourceHeight = Math.min(imgPosition.rotatedHeight - sourceY, area.height)
-
-    // 计算图片在画布上的绘制位置
-    const destX = Math.max(0, imgPosition.x - area.x)
-    const destY = Math.max(0, imgPosition.y - area.y)
-
-    // 从临时画布复制到最终画布
-    ctx.drawImage(
-      tempCanvas,
-      sourceX,
-      sourceY,
-      sourceWidth,
-      sourceHeight,
-      destX,
-      destY,
-      sourceWidth,
-      sourceHeight
+    // 将主画布的内容复制到裁剪画布
+    cropCtx.drawImage(
+      canvas,
+      area.x, area.y, area.width, area.height,  // 源区域
+      0, 0, area.width, area.height  // 目标区域
     )
 
-    // 如果有水印，添加水印
-    if (file.config?.watermark?.text) {
-      const watermarkConfig = file.config.watermark
-      ctx.save()
-      ctx.font = `${watermarkConfig.size}px Arial`
-      ctx.fillStyle = watermarkConfig.color
-      ctx.globalAlpha = watermarkConfig.opacity / 100
-
-      if (watermarkConfig.mode === 'single') {
-        // 单个水印
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
-        ctx.fillText(
-          watermarkConfig.text,
-          watermarkConfig.position.x,
-          watermarkConfig.position.y
-        )
-      } else {
-        // 满屏水印
-        ctx.textAlign = 'left'
-        ctx.textBaseline = 'top'
-        const textWidth = ctx.measureText(watermarkConfig.text).width
-        const gap = textWidth + 50
-
-        for (let y = 0; y < area.height; y += gap) {
-          for (let x = 0; x < area.width; x += gap) {
-            ctx.fillText(watermarkConfig.text, x, y)
-          }
-        }
-      }
-      ctx.restore()
-    }
-
-    // 将画布转换为 blob
+    // 将裁剪画布转换为 blob
     return new Promise(resolve => {
-      canvas.toBlob(blob => {
+      cropCanvas.toBlob(blob => {
         resolve(blob)
       }, 'image/png')
     })
