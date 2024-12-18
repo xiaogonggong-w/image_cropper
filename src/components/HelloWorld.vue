@@ -374,9 +374,9 @@ const drawWatermark = () => {
 // 修改更新水印方法
 const updateWatermark = () => {
   // 确保水印配置存在
-  if (!config.watermark) {
-    config.watermark = deepClone(defaultConfig.watermark);
-  }
+  // if (!config.watermark) {
+  //   config.watermark = deepClone(defaultConfig.watermark);
+  // }
 
   // 重绘图片和水印
   if (originalImage.value) {
@@ -606,7 +606,8 @@ const confirmCrop = () => {
   // 设���输出画布大小
   canvas.width = area.width;
   canvas.height = area.height;
-
+ console.log(config);
+ 
   // 先填充背景色
   ctx.fillStyle = config.export.backgroundColor;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1564,10 +1565,11 @@ watch(
 watch(
   () => config,
   (newConfig) => {
+    console.log(newConfig);
     // 更新水印和导出设置
-    if (newConfig.watermark) {
-      updateWatermark();
-    }
+    // if (newConfig.watermark) {
+    //   updateWatermark();
+    // }
     // 保存到当前文件
     saveToCurrentFile();
   },
