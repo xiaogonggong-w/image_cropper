@@ -1266,10 +1266,16 @@ const selectFile = key => {
   const file = imageFiles.value.find(file => file.key === key);
   
   // 恢复文件的所有信息
-  config = file.config ? deepClone(file.config) : deepClone(defaultConfig);
+  if (file.config) {
+    // 使用 Object.assign 更新配置，保持响应性
+    Object.assign(config, deepClone(file.config));
+  } else {
+    // 使用默认配置
+    Object.assign(config, deepClone(defaultConfig));
+  }
+
   imagePosition.value = file.imagePosition ? deepClone(file.imagePosition) : deepClone(defaultImagePosition);
   
-  // 恢复裁剪框信息
   if (file.cropInfo) {
     cropArea.value = deepClone(file.cropInfo.area);
   }
