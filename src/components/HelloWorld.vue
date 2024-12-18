@@ -542,12 +542,7 @@ const defaultImagePosition = { x: 0, y: 0, width: 0, height: 0 };
 // 添加图片位置状态
 const imagePosition = ref(deepClone(defaultImagePosition));
 
-watch(
-  () => imagePosition.value,
-  newVal => {
-     
-  }
-);
+
 
 // 更新裁剪框位置
 const updateCropBoxPosition = () => {
@@ -617,7 +612,7 @@ const confirmCrop = () => {
 
   // 根据不同形状进行裁剪
   ctx.beginPath();
-  switch (cropArea.cropShape) {
+  switch (cropArea.value.cropShape) {
     case "circle":
       const radius = Math.min(area.width, area.height) / 2;
       ctx.arc(area.width / 2, area.height / 2, radius, 0, Math.PI * 2);
@@ -1145,26 +1140,15 @@ const handlePaste = event => {
 
 // 修改形状切换处理方法
 const handleShapeChange = shape => {
-  const area = cropArea.value;
-  area.cropShape = shape;
+  cropArea.value.cropShape = shape;
 
   // 只在切换到圆形时进行调整
   if (shape === "circle") {
-    const size = Math.min(area.width, area.height);
-    area.x += (area.width - size) / 2;
-    area.y += (area.height - size) / 2;
-    area.width = size;
-    area.height = size;
-  }
-
-  // 保存更新后的裁剪框信息
-  if (currentFileIndex.value !== -1) {
-    const index = imageFiles.value.findIndex(file => file.key === currentFileIndex.value);
-    if (index !== -1) {
-      imageFiles.value[index].cropInfo = {
-        area: deepClone(cropArea.value)
-      };
-    }
+    const size = Math.min(cropArea.value.width, cropArea.value.height);
+    cropArea.value.x += (cropArea.value.width - size) / 2;
+    cropArea.value.y += (cropArea.value.height - size) / 2;
+    cropArea.value.width = size;
+    cropArea.value.height = size;
   }
 
   updateCropBoxPosition();
@@ -1395,13 +1379,14 @@ const batchExport = async () => {
   
   // 创建一个处理单个文件的异步函数
   const processFile = async (file) => {
+    console.log(file);
+    
     const canvas = document.createElement("canvas")
     const ctx = canvas.getContext("2d")
     const container = containerRef.value
     
     // 使用文件自己的裁剪框信息
     const cropInfo = file.cropInfo || {
-      shape: "rect",
       area: cropArea.value
     }
     const area = cropInfo.area
@@ -1477,7 +1462,8 @@ const batchExport = async () => {
 
     // 根据形状裁剪
     cropCtx.beginPath()
-    switch (cropInfo.shape) {
+    
+    switch (area.cropShape) {
       case "circle":
         const radius = Math.min(area.width, area.height) / 2
         cropCtx.arc(area.width / 2, area.height / 2, radius, 0, Math.PI * 2)
