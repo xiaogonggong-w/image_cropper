@@ -493,14 +493,11 @@ const initCanvas = image => {
   const canvas = canvasRef.value;
   const container = containerRef.value;
 
-  // 置画布大小
   canvas.width = container.offsetWidth;
   canvas.height = container.offsetHeight;
 
-  // 绘制图片
   const ctx = canvas.getContext("2d");
 
-  // 计算图片缩放和位置
   const scale = Math.min(
     canvas.width / image.width,
     canvas.height / image.height
@@ -511,7 +508,6 @@ const initCanvas = image => {
   const x = (canvas.width - scaledWidth) / 2;
   const y = (canvas.height - scaledHeight) / 2;
 
-  // 记录图片位置
   imagePosition.value = {
     x,
     y,
@@ -522,36 +518,22 @@ const initCanvas = image => {
     rotatedHeight: scaledHeight
   };
 
-  // 绘制图片
   ctx.drawImage(image, x, y, scaledWidth, scaledHeight);
 
-  // 初始化裁剪框位置 - 居中显示，基于图片位置
   const cropWidth = Math.min(scaledWidth * 0.8, canvas.width * 0.8);
   const cropHeight = (cropWidth * 9) / 16;
 
   cropArea.value = {
-    x: x + (scaledWidth - cropWidth) / 2, // 基于图片位置居中
-    y: y + (scaledHeight - cropHeight) / 2, // 基于图片位置居中
+    x: x + (scaledWidth - cropWidth) / 2,
+    y: y + (scaledHeight - cropHeight) / 2,
     width: cropWidth,
     height: cropHeight,
     isDragging: false,
-    isResizing: false
+    isResizing: false,
+    cropShape: "rect"
   };
 
-  // 保存初始裁剪框信息到当前文件
-  if (currentFileIndex.value !== -1) {
-    const index = imageFiles.value.findIndex(file => file.key === currentFileIndex.value);
-    if (index !== -1) {
-      imageFiles.value[index].cropInfo = {
-        area: deepClone(cropArea.value)
-      };
-    }
-  }
-
-  // 更新裁剪框位置
   updateCropBoxPosition();
-
-  // 初始化水印位置
   initWatermarkPosition();
 };
 
@@ -639,17 +621,6 @@ const confirmCrop = () => {
     case "circle":
       const radius = Math.min(area.width, area.height) / 2;
       ctx.arc(area.width / 2, area.height / 2, radius, 0, Math.PI * 2);
-      break;
-    case "ellipse":
-      ctx.ellipse(
-        area.width / 2,
-        area.height / 2,
-        area.width / 2,
-        area.height / 2,
-        0,
-        0,
-        Math.PI * 2
-      );
       break;
     default:
       // rect
@@ -1305,19 +1276,6 @@ const handleFolderChange = e => {
 
 // 添加文件选择方法
 const selectFile = key => {
-  // 保存当前文件的所有信息
-  if (currentFileIndex.value !== -1) {
-    const index = imageFiles.value.findIndex(file => file.key === currentFileIndex.value);
-    if (index !== -1) {
-      imageFiles.value[index].config = deepClone(config);
-      imageFiles.value[index].imagePosition = deepClone(imagePosition.value);
-      imageFiles.value[index].cropInfo = {
-        area: deepClone(cropArea.value)
-      };
-    }
-  }
-
-  // 切换到新文件
   currentFileIndex.value = key;
   const file = imageFiles.value.find(file => file.key === key);
   
@@ -1335,7 +1293,7 @@ const selectFile = key => {
   nextTick(() => {
     if (file.config) {
       handleCanvasDraw();
-      updateCropBoxPosition(); // 更新裁剪框位置
+      updateCropBoxPosition();
     } else {
       initCanvas(file.image);
     }
@@ -1588,6 +1546,50 @@ const drawWatermarkOnCanvas = (ctx, image, width, height) => {
     ctx.fillText(config.watermark.text, x, y);
     ctx.restore();
 };
+
+// 添加保存到文件的方法
+const saveToCurrentFile = () => {
+  if (currentFileIndex.value !== -1) {
+    const index = imageFiles.value.findIndex(file => file.key === currentFileIndex.value);
+    if (index !== -1) {
+      imageFiles.value[index] = {
+        ...imageFiles.value[index],
+        config: deepClone(config),
+        imagePosition: deepClone(imagePosition.value),
+        cropInfo: {
+          area: deepClone(cropArea.value)
+        }
+      };
+    }
+  }
+};
+
+// 监听裁剪框变化
+watch(
+  cropArea,
+  () => {
+    saveToCurrentFile();
+  },
+  { deep: true }
+);
+
+// 监听配置变化
+watch(
+  config,
+  () => {
+    saveToCurrentFile();
+  },
+  { deep: true }
+);
+
+// 监听图片位置变化
+watch(
+  imagePosition,
+  () => {
+    saveToCurrentFile();
+  },
+  { deep: true }
+);
 </script>
 
 <template>
