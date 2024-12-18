@@ -20,7 +20,8 @@ import {
   ElRadioGroup,
   ElRadio,
   ElSelect,
-  ElOption
+  ElOption,
+  ElMessage
 } from "element-plus";
 import "element-plus/dist/index.css";
 import hb from "../assets/hb.svg";
@@ -31,6 +32,8 @@ import { Folder, Setting, Plus, Delete } from "@element-plus/icons-vue";
 import { nanoid } from "nanoid";
 import { deepClone } from "./util";
 import exportIcon from "../assets/export.svg"; // 导入批量导出图标
+import { saveAs } from "file-saver";
+import JSZip from "jszip";
 
 const canvasRef = ref(null);
 const cropBoxRef = ref(null);
@@ -207,6 +210,8 @@ const updateImagePosition = () => {
   imagePosition.value = {
     x: (canvas.width - rotatedWidth) / 2,
     y: (canvas.height - rotatedHeight) / 2,
+    rotatedWidth,
+    rotatedHeight,
     width: image.width,
     height: image.height,
     scale: finalScale
@@ -422,10 +427,10 @@ const handlePositionChange = (axis, value) => {
   // 直接使用相对坐标，不需要虑负值
   if (axis === "x") {
     cropArea.value.x =
-      img.x + Math.min(newValue, img.width - cropArea.value.width);
+      img.x + Math.min(newValue, img.rotatedWidth - cropArea.value.width);
   } else {
     cropArea.value.y =
-      img.y + Math.min(newValue, img.height - cropArea.value.height);
+      img.y + Math.min(newValue, img.rotatedHeight - cropArea.value.height);
   }
 
   updateCropBoxPosition();
@@ -444,28 +449,28 @@ const handleQuickPosition = position => {
       area.y = img.y;
       break;
     case "center-top":
-      area.x = img.x + (img.width - area.width) / 2;
+      area.x = img.x + (img.rotatedWidth - area.width) / 2;
       area.y = img.y;
       break;
     case "right-top":
-      area.x = img.x + img.width - area.width;
+      area.x = img.x + img.rotatedWidth - area.width;
       area.y = img.y;
       break;
     case "center":
-      area.x = img.x + (img.width - area.width) / 2;
-      area.y = img.y + (img.height - area.height) / 2;
+      area.x = img.x + (img.rotatedWidth - area.width) / 2;
+      area.y = img.y + (img.rotatedHeight - area.height) / 2;
       break;
     case "left-bottom":
       area.x = img.x;
-      area.y = img.y + img.height - area.height;
+      area.y = img.y + img.rotatedHeight - area.height;
       break;
     case "center-bottom":
-      area.x = img.x + (img.width - area.width) / 2;
-      area.y = img.y + img.height - area.height;
+      area.x = img.x + (img.rotatedWidth - area.width) / 2;
+      area.y = img.y + img.rotatedHeight - area.height;
       break;
     case "right-bottom":
-      area.x = img.x + img.width - area.width;
-      area.y = img.y + img.height - area.height;
+      area.x = img.x + img.rotatedWidth - area.width;
+      area.y = img.y + img.rotatedHeight - area.height;
       break;
   }
 
@@ -512,7 +517,9 @@ const initCanvas = image => {
     y,
     width: image.width,
     height: image.height,
-    scale
+    scale,
+    rotatedWidth: scaledWidth,
+    rotatedHeight: scaledHeight
   };
 
   // 绘制图片
@@ -644,8 +651,8 @@ const confirmCrop = () => {
   const img = imagePosition.value;
   const sourceX = Math.max(0, area.x - img.x);
   const sourceY = Math.max(0, area.y - img.y);
-  const sourceWidth = Math.min(img.width - sourceX, area.width);
-  const sourceHeight = Math.min(img.height - sourceY, area.height);
+  const sourceWidth = Math.min(img.rotatedWidth - sourceX, area.width);
+  const sourceHeight = Math.min(img.rotatedHeight - sourceY, area.height);
 
   // 计算图片在画布上的绘��位置
   const destX = Math.max(0, img.x - area.x);
@@ -837,9 +844,9 @@ const isPointInCropArea = (x, y) => {
     y >= area.y &&
     y <= area.y + area.height &&
     x >= image.x + mosaicSize / 2 &&
-    x <= image.x + image.width - mosaicSize / 2 &&
+    x <= image.x + image.rotatedWidth - mosaicSize / 2 &&
     y >= image.y + mosaicSize / 2 &&
-    y <= image.y + image.height - mosaicSize / 2
+    y <= image.y + image.rotatedHeight - mosaicSize / 2
   );
 };
 
@@ -858,9 +865,9 @@ const drawMosaic = (x, y) => {
     const img = imagePosition.value;
     return (
       point.x >= img.x + size / 2 &&
-      point.x <= img.x + img.width - size / 2 &&
+      point.x <= img.x + img.rotatedWidth - size / 2 &&
       point.y >= img.y + size / 2 &&
-      point.y <= img.y + img.height - size / 2
+      point.y <= img.y + img.rotatedHeight - size / 2
     );
   });
 
@@ -1385,43 +1392,138 @@ const handleFileChange = e => {
 const uploadInput = ref(null);
 
 // 添加批量导出方法
-const batchExport = () => {
-    imageFiles.value.forEach(file => {
-        const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d");
-        
-        // 设置画布大小
-        const baseScale = Math.min(
-            canvas.width / file.image.width,
-            canvas.height / file.image.height
-        );
-        const finalScale = baseScale * (config.scale / 100);
-        
-        const scaledWidth = file.image.width * finalScale;
-        const scaledHeight = file.image.height * finalScale;
+const batchExport = async () => {
+  const zip = new JSZip()
+  
+  // 创建一个处理单个文件的异步函数
+  const processFile = async (file) => {
+    const canvas = document.createElement("canvas")
+    const ctx = canvas.getContext("2d")
+    const area = cropArea.value
 
-        canvas.width = scaledWidth;
-        canvas.height = scaledHeight;
+    // 设置输出画布大小
+    canvas.width = area.width
+    canvas.height = area.height
 
-        // 绘制图片到画布
-        ctx.save();
-        ctx.translate(scaledWidth / 2, scaledHeight / 2);
-        ctx.rotate((config.rotateAngle * Math.PI) / 180);
-        ctx.drawImage(file.image, -scaledWidth / 2, -scaledHeight / 2, scaledWidth, scaledHeight);
-        ctx.restore();
+    // 先填充背景色
+    ctx.fillStyle = file.config?.export?.backgroundColor || config.export.backgroundColor
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-        // 绘制水印
-        if (config.watermark.text) {
-            drawWatermarkOnCanvas(ctx, file.image, scaledWidth, scaledHeight);
+    // 根据不同形状进行裁剪
+    ctx.beginPath()
+    switch (cropShape.value) {
+      case "circle":
+        const radius = Math.min(area.width, area.height) / 2
+        ctx.arc(area.width / 2, area.height / 2, radius, 0, Math.PI * 2)
+        break
+      case "ellipse":
+        ctx.ellipse(
+          area.width / 2,
+          area.height / 2,
+          area.width / 2,
+          area.height / 2,
+          0,
+          0,
+          Math.PI * 2
+        )
+        break
+      default:
+        // rect
+        ctx.rect(0, 0, area.width, area.height)
+    }
+    ctx.clip()
+    
+    // 计算图片在裁剪框中的相对位置
+    const img = file.imagePosition || imagePosition.value
+    const sourceX = Math.max(0, area.x - img.x)
+    const sourceY = Math.max(0, area.y - img.y)
+    const sourceWidth = Math.min(img.rotatedWidth - sourceX, area.width)
+    const sourceHeight = Math.min(img.rotatedHeight - sourceY, area.height)
+
+    // 计算图片在画布上的绘制位置
+    const destX = Math.max(0, img.x - area.x)
+    const destY = Math.max(0, img.y - area.y)
+
+    // 绘制图片
+    ctx.drawImage(
+      file.image,
+      sourceX + img.x,
+      sourceY + img.y,
+      sourceWidth,
+      sourceHeight,
+      destX,
+      destY,
+      sourceWidth,
+      sourceHeight
+    )
+
+ // 如果有水印，添加水印
+ if (file.config?.watermark?.text) {
+      const watermarkConfig = file.config.watermark
+      ctx.save()
+      ctx.font = `${watermarkConfig.size}px Arial`
+      ctx.fillStyle = watermarkConfig.color
+      ctx.globalAlpha = watermarkConfig.opacity / 100
+
+      if (watermarkConfig.mode === 'single') {
+        // 单个水印
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(
+          watermarkConfig.text,
+          watermarkConfig.position.x,
+          watermarkConfig.position.y
+        )
+      } else {
+        // 满屏水印
+        ctx.textAlign = 'left'
+        ctx.textBaseline = 'top'
+        const textWidth = ctx.measureText(watermarkConfig.text).width
+        const gap = textWidth + 50
+
+        const centerX = area.x + area.width / 2
+        const centerY = area.y + area.height / 2
+
+        ctx.translate(centerX, centerY)
+        ctx.rotate((-30 * Math.PI) / 180)
+        ctx.translate(-centerX, -centerY)
+
+        for (let y = area.y - gap; y < area.y + area.height + gap; y += gap) {
+          for (let x = area.x - gap; x < area.x + area.width + gap; x += gap) {
+            ctx.fillText(watermarkConfig.text, x, y)
+          }
         }
+      }
+      ctx.restore()
+    }
 
-        // 创建下载链接
-        const link = document.createElement("a");
-        link.download = `${file.name}.png`; // 设置下载文件名
-        link.href = canvas.toDataURL(); // 获取图片数据
-        link.click(); // 触发下载
-    });
-};
+     // 将画布转换为 blob
+     return new Promise(resolve => {
+      canvas.toBlob(blob => {
+        resolve(blob)
+      }, 'image/png')
+    })
+  }
+
+  try {
+    // 处理所有文件
+    for (const file of imageFiles.value) {
+      const blob = await processFile(file)
+      zip.file(`${file.name}.png`, blob)
+    }
+
+    // 生成并下载 zip 文件
+    const content = await zip.generateAsync({ type: 'blob' })
+    saveAs(content, `batch_export_${Date.now()}.zip`)
+
+    ElMessage.success('批量导出成功')
+  } catch (error) {
+    console.error('批量导出失败:', error)
+    ElMessage.error('批量导出失败')
+  }
+}
+
+
 
 // 绘制水印到画布的辅助函数
 const drawWatermarkOnCanvas = (ctx, image, width, height) => {
