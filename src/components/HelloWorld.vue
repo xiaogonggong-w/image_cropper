@@ -231,11 +231,7 @@ const predefineColors = [
   "#ffffff"
 ];
 
-// 修改水印颜色处理方法
-const handleWatermarkColorChange = color => {
-  config.watermark.color = color;
-  updateWatermark();
-};
+
 
 // 修改水印位置处理方法
 const handleWatermarkPosition = position => {
@@ -377,6 +373,11 @@ const drawWatermark = () => {
 
 // 修改更新水印方法
 const updateWatermark = () => {
+  // 确保水印配置存在
+  if (!config.watermark) {
+    config.watermark = deepClone(defaultConfig.watermark);
+  }
+
   // 重绘图片和水印
   if (originalImage.value) {
     handleCanvasDraw();
@@ -1506,7 +1507,7 @@ const batchExport = async () => {
       zip.file(`${file.name}.png`, blob)
     }
 
-    // 生成并下载 zip 文件
+    // ���成并下载 zip 文件
     const content = await zip.generateAsync({ type: 'blob' })
     saveAs(content, `batch_export_${Date.now()}.zip`)
 
@@ -1561,8 +1562,13 @@ watch(
 
 // 监听配置变化
 watch(
-  config,
-  () => {
+  () => config,
+  (newConfig) => {
+    // 更新水印和导出设置
+    if (newConfig.watermark) {
+      updateWatermark();
+    }
+    // 保存到当前文件
     saveToCurrentFile();
   },
   { deep: true }
@@ -1576,6 +1582,42 @@ watch(
   },
   { deep: true }
 );
+
+
+// 修改水印颜色处理方法
+const handleWatermarkColorChange = color => {
+  config.watermark.color = color;
+  updateWatermark();
+};
+
+// 修改水印文本处理方法
+const handleWatermarkTextChange = text => {
+  config.watermark.text = text;
+  updateWatermark();
+};
+
+// 修改水印大小处理方法
+const handleWatermarkSizeChange = size => {
+  config.watermark.size = size;
+  updateWatermark();
+};
+
+// 修改水印透明度处理方法
+const handleWatermarkOpacityChange = opacity => {
+  config.watermark.opacity = opacity;
+  updateWatermark();
+};
+
+// 修改水印模式处理方法
+const handleWatermarkModeChange = mode => {
+  config.watermark.mode = mode;
+  updateWatermark();
+};
+
+// 修改导出背景色处理方法
+const handleExportBgColorChange = color => {
+  config.export.backgroundColor = color;
+};
 </script>
 
 <template>
@@ -1856,104 +1898,116 @@ watch(
           </div>
         </div>
 
-        <!-- 在位置控制面板后添加水印配置面板 -->
-        <div class="size-panel">
-          <div class="panel-title">水印设置</div>
-          <div class="size-inputs">
-            <!-- 水印文本输入 -->
-            <div class="size-input-group">
-              <span class="size-label">文本</span>
-              <el-input v-model="config.watermark.text" placeholder="请输入水印文字" @change="updateWatermark" />
-            </div>
 
-            <!-- 水印模式 -->
-            <div class="size-input-group">
-              <span class="size-label">模式</span>
-              <el-radio-group v-model="config.watermark.mode" @change="updateWatermark">
-                <el-radio value="single" label="单个">单个</el-radio>
-                <el-radio value="full" label="满屏">满屏</el-radio>
-              </el-radio-group>
-            </div>
+        <!-- 水印设置面板 -->
+<div class="size-panel">
+  <div class="panel-title">水印设置</div>
+  <div class="size-inputs">
+    <!-- 水印文本输入 -->
+    <div class="size-input-group">
+      <span class="size-label">文本</span>
+      <el-input v-model="config.watermark.text" placeholder="请输入水印文字" @change="updateWatermark" />
+    </div>
 
-            <!-- 单个水印位置控制 -->
-            <template v-if="config.watermark.mode === 'single'">
-              <div class="size-input-group">
-                <span class="size-label">X轴</span>
-                <el-input v-model.number="config.watermark.position.x" type="number" :min="0"
-                  :max="canvasRef?.width || 0" @input="updateWatermark">
-                  <template #append>px</template>
-                </el-input>
-              </div>
-              <div class="size-input-group">
-                <span class="size-label">Y轴</span>
-                <el-input v-model.number="config.watermark.position.y" type="number" :min="0"
-                  :max="canvasRef?.height || 0" @input="updateWatermark">
-                  <template #append>px</template>
-                </el-input>
-              </div>
-              <!-- 快捷位置按钮 -->
-              <div class="position-buttons">
-                <el-button @click="handleWatermarkPosition('left-top')">左上</el-button>
-                <el-button @click="handleWatermarkPosition('center-top')">顶部居中</el-button>
-                <el-button @click="handleWatermarkPosition('right-top')">右上</el-button>
-              </div>
-              <div class="position-buttons">
-                <el-button @click="handleWatermarkPosition('center')">居中</el-button>
-              </div>
-              <div class="position-buttons">
-                <el-button @click="handleWatermarkPosition('left-bottom')">左下</el-button>
-                <el-button @click="handleWatermarkPosition('center-bottom')">底部居中</el-button>
-                <el-button @click="handleWatermarkPosition('right-bottom')">右下</el-button>
-              </div>
-            </template>
+    <!-- 水印模式 -->
+    <div class="size-input-group">
+      <span class="size-label">模式</span>
+      <el-radio-group v-model="config.watermark.mode" @change="updateWatermark">
+        <el-radio value="single">单个</el-radio>
+        <el-radio value="full">满屏</el-radio>
+      </el-radio-group>
+    </div>
 
-            <!-- 其他印设置保持不变 -->
-            <div class="size-input-group">
-              <span class="size-label">大小</span>
-              <el-input v-model.number="config.watermark.size" type="number" :min="12" :max="72"
-                @input="updateWatermark">
-                <template #append>px</template>
-              </el-input>
-            </div>
+    <!-- 单个水印位置控制 -->
+    <template v-if="config.watermark.mode === 'single'">
+      <div class="size-input-group">
+        <span class="size-label">X轴</span>
+        <el-input 
+          v-model.number="config.watermark.position.x" 
+          type="number" 
+          :min="0"
+          :max="canvasRef?.width || 0" 
+          @input="updateWatermark"
+        >
+          <template #append>px</template>
+        </el-input>
+      </div>
+      <div class="size-input-group">
+        <span class="size-label">Y轴</span>
+        <el-input 
+          v-model.number="config.watermark.position.y" 
+          type="number" 
+          :min="0"
+          :max="canvasRef?.height || 0" 
+          @input="updateWatermark"
+        >
+          <template #append>px</template>
+        </el-input>
+      </div>
+      <!-- 快捷位置按钮 -->
+      <div class="position-buttons">
+        <el-button @click="handleWatermarkPosition('left-top')">左上</el-button>
+        <el-button @click="handleWatermarkPosition('center-top')">顶部居中</el-button>
+        <el-button @click="handleWatermarkPosition('right-top')">右上</el-button>
+      </div>
+      <div class="position-buttons">
+        <el-button @click="handleWatermarkPosition('center')">居中</el-button>
+      </div>
+      <div class="position-buttons">
+        <el-button @click="handleWatermarkPosition('left-bottom')">左下</el-button>
+        <el-button @click="handleWatermarkPosition('center-bottom')">底部居中</el-button>
+        <el-button @click="handleWatermarkPosition('right-bottom')">右下</el-button>
+      </div>
+    </template>
 
-            <!-- 水印颜色 -->
-            <div class="size-input-group color-picker-group">
-              <span class="size-label">颜色</span>
-              <el-color-picker v-model="config.watermark.color" :predefine="predefineColors" show-alpha
-                @change="handleWatermarkColorChange" />
-            </div>
+    <!-- 其他水印设置 -->
+    <div class="size-input-group">
+      <span class="size-label">大小</span>
+      <el-input 
+        v-model.number="config.watermark.size" 
+        type="number" 
+        :min="12" 
+        :max="72"
+        @input="updateWatermark"
+      >
+        <template #append>px</template>
+      </el-input>
+    </div>
 
-            <!-- 水印透明度 -->
-            <div class="size-input-group">
-              <span class="size-label">透明度</span>
-              <el-slider v-model="config.watermark.opacity" :min="0" :max="100" @input="updateWatermark" />
-            </div>
-          </div>
-        </div>
+    <!-- 水印颜色 -->
+    <div class="size-input-group color-picker-group">
+      <span class="size-label">颜色</span>
+      <el-color-picker 
+        v-model="config.watermark.color" 
+        :predefine="predefineColors" 
+        show-alpha
+        @change="updateWatermark" 
+      />
+    </div>
 
-        <!-- 在尺寸调整面板中添加背景颜色选择器 -->
-        <div class="size-panel">
-          <div class="panel-title">导出设置</div>
-          <div class="size-inputs">
-            <div class="size-input-group color-picker-group">
-              <span class="size-label">背景色</span>
-              <el-color-picker v-model="config.export.backgroundColor" :predefine="predefineColors" show-alpha />
-            </div>
-            <!-- 显��已保存的配置列表 -->
-            <div v-if="savedConfigs.length" class="saved-configs">
-              <div v-for="cfg in savedConfigs" :key="cfg.name" class="config-item">
-                <div class="config-info">
-                  <span class="config-name">{{ cfg.name }}</span>
-                  <span class="config-time">{{ new Date(cfg.timestamp).toLocaleString() }}</span>
-                </div>
-                <div class="config-actions">
-                  <el-button type="primary" size="small" @click="applyConfig(cfg.data)">应用</el-button>
-                  <el-button type="danger" size="small" @click="deleteConfig(cfg.name)">删除</el-button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+    <!-- 水印透明度 -->
+    <div class="size-input-group">
+      <span class="size-label">透明度</span>
+      <el-slider 
+        v-model="config.watermark.opacity" 
+        :min="0" 
+        :max="100" 
+        @input="updateWatermark" 
+      />
+    </div>
+  </div>
+</div>
+
+<!-- 导出设置面板 -->
+<div class="size-panel">
+  <div class="panel-title">导出设置</div>
+  <div class="size-inputs">
+    <div class="size-input-group color-picker-group">
+      <span class="size-label">背景色</span>
+      <el-color-picker v-model="config.export.backgroundColor" :predefine="predefineColors" show-alpha />
+    </div>
+  </div>
+</div>
       </el-scrollbar>
 
       <!-- 操作按钮 -->
@@ -3121,4 +3175,6 @@ watch(
   border-color: #409eff;
   background: #f5f7fa;
 }
+
+
 </style>
