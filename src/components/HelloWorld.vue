@@ -538,6 +538,17 @@ const initCanvas = image => {
     isResizing: false
   };
 
+  // 保存初始裁剪框信息到当前文件
+  if (currentFileIndex.value !== -1) {
+    const index = imageFiles.value.findIndex(file => file.key === currentFileIndex.value);
+    if (index !== -1) {
+      imageFiles.value[index].cropInfo = {
+        shape: cropShape.value,
+        area: deepClone(cropArea.value)
+      };
+    }
+  }
+
   // 更新裁剪框位置
   updateCropBoxPosition();
 
@@ -1137,7 +1148,7 @@ onUnmounted(() => {
   window.removeEventListener("paste", handlePaste);
 });
 
-// 处理粘贴事件
+// 处理粘贴事��
 const handlePaste = event => {
   const items = event.clipboardData.items;
   for (let i = 0; i < items.length; i++) {
@@ -1169,20 +1180,28 @@ const handleShapeChange = shape => {
 
   // 只在切换到圆形时进行调整
   if (shape === "circle") {
-    // 圆形需要保持正方形，以较小边为基准
     const size = Math.min(area.width, area.height);
-    // 调整位置使其居中
     area.x += (area.width - size) / 2;
     area.y += (area.height - size) / 2;
     area.width = size;
     area.height = size;
   }
-  // 切换到矩形时不需要特殊处理
+
+  // 保存更新后的裁剪框信息
+  if (currentFileIndex.value !== -1) {
+    const index = imageFiles.value.findIndex(file => file.key === currentFileIndex.value);
+    if (index !== -1) {
+      imageFiles.value[index].cropInfo = {
+        shape: cropShape.value,
+        area: deepClone(cropArea.value)
+      };
+    }
+  }
 
   updateCropBoxPosition();
 };
 
-// 添加配置管理相关的状态和方法
+// 添加配置管理相关���状态和方法
 const savedConfigs = ref([]);
 const currentConfigName = ref("");
 
@@ -1288,24 +1307,39 @@ const handleFolderChange = e => {
 
 // 添加文件选择方法
 const selectFile = key => {
-  // 先保存就配置到到imageFiles中
-  const index = imageFiles.value.findIndex(file => file.key === currentFileIndex.value);
-  console.log(index, imageFiles.value[index]);
-
-  if (index !== -1) {
-    imageFiles.value[index].config = deepClone(config);
-    imageFiles.value[index].imagePosition = deepClone(imagePosition.value);
+  // 保存当前文件的所有信息
+  if (currentFileIndex.value !== -1) {
+    const index = imageFiles.value.findIndex(file => file.key === currentFileIndex.value);
+    if (index !== -1) {
+      imageFiles.value[index].config = deepClone(config);
+      imageFiles.value[index].imagePosition = deepClone(imagePosition.value);
+      imageFiles.value[index].cropInfo = {
+        shape: cropShape.value,
+        area: deepClone(cropArea.value)
+      };
+    }
   }
+
+  // 切换到新文件
   currentFileIndex.value = key;
   const file = imageFiles.value.find(file => file.key === key);
+  
+  // 恢复文件的所有信息
   config = file.config ? deepClone(file.config) : deepClone(defaultConfig);
-  console.log(config.scale);
   imagePosition.value = file.imagePosition ? deepClone(file.imagePosition) : deepClone(defaultImagePosition);
+  
+  // 恢复裁剪框信息
+  if (file.cropInfo) {
+    cropShape.value = file.cropInfo.shape;
+    cropArea.value = deepClone(file.cropInfo.area);
+  }
+  
   originalImage.value = file.image;
 
   nextTick(() => {
     if (file.config) {
       handleCanvasDraw();
+      updateCropBoxPosition(); // 更新裁剪框位置
     } else {
       initCanvas(file.image);
     }
@@ -1377,21 +1411,31 @@ const handleFileChange = e => {
           timestamp: Date.now(),
           image: img,
           config: null,
-          imagePosition: null
+          imagePosition: null,
+          cropInfo: {  // 添加裁剪框信息
+            shape: "rect",
+            area: {
+              x: 0,
+              y: 0,
+              width: 0,
+              height: 0,
+              isDragging: false,
+              isResizing: false
+            }
+          }
         });
       };
       img.src = e.target.result;
     };
     reader.readAsDataURL(file);
   });
-  // 清空输入，以便可以重复选择同一文件
   e.target.value = "";
 };
 
 // 修改文件输入框的引用名称
 const uploadInput = ref(null);
 
-// 添加批量导出方法
+// 修改批量导出方法
 const batchExport = async () => {
   const zip = new JSZip()
   
@@ -1399,11 +1443,18 @@ const batchExport = async () => {
   const processFile = async (file) => {
     const canvas = document.createElement("canvas")
     const ctx = canvas.getContext("2d")
-    const area = cropArea.value
+    const container = containerRef.value
+    
+    // 使用文件自己的裁剪框信息
+    const cropInfo = file.cropInfo || {
+      shape: "rect",
+      area: cropArea.value
+    }
+    const area = cropInfo.area
 
     // 设置输出画布大小
-    canvas.width = area.width
-    canvas.height = area.height
+    canvas.width = container.offsetWidth
+    canvas.height = container.offsetHeight
 
     // 先填充背景色
     ctx.fillStyle = file.config?.export?.backgroundColor || config.export.backgroundColor
@@ -1411,7 +1462,7 @@ const batchExport = async () => {
 
     // 根据不同形状进行裁剪
     ctx.beginPath()
-    switch (cropShape.value) {
+    switch (cropInfo.shape) {
       case "circle":
         const radius = Math.min(area.width, area.height) / 2
         ctx.arc(area.width / 2, area.height / 2, radius, 0, Math.PI * 2)
@@ -1432,23 +1483,23 @@ const batchExport = async () => {
         ctx.rect(0, 0, area.width, area.height)
     }
     ctx.clip()
-    
+
+
     // 计算图片在裁剪框中的相对位置
-    const img = file.imagePosition || imagePosition.value
-    const sourceX = Math.max(0, area.x - img.x)
-    const sourceY = Math.max(0, area.y - img.y)
-    const sourceWidth = Math.min(img.rotatedWidth - sourceX, area.width)
-    const sourceHeight = Math.min(img.rotatedHeight - sourceY, area.height)
+    const sourceX = Math.max(0, area.x - imgPosition.x)
+    const sourceY = Math.max(0, area.y - imgPosition.y)
+    const sourceWidth = Math.min(imgPosition.rotatedWidth - sourceX, area.width)
+    const sourceHeight = Math.min(imgPosition.rotatedHeight - sourceY, area.height)
 
     // 计算图片在画布上的绘制位置
-    const destX = Math.max(0, img.x - area.x)
-    const destY = Math.max(0, img.y - area.y)
+    const destX = Math.max(0, imgPosition.x - area.x)
+    const destY = Math.max(0, imgPosition.y - area.y)
 
-    // 绘制图片
+    // 从临时画布复制到最终画布
     ctx.drawImage(
-      file.image,
-      sourceX + img.x,
-      sourceY + img.y,
+      tempCanvas,
+      sourceX,
+      sourceY,
       sourceWidth,
       sourceHeight,
       destX,
@@ -1457,8 +1508,8 @@ const batchExport = async () => {
       sourceHeight
     )
 
- // 如果有水印，添加水印
- if (file.config?.watermark?.text) {
+    // 如果有水印，添加水印
+    if (file.config?.watermark?.text) {
       const watermarkConfig = file.config.watermark
       ctx.save()
       ctx.font = `${watermarkConfig.size}px Arial`
@@ -1481,15 +1532,8 @@ const batchExport = async () => {
         const textWidth = ctx.measureText(watermarkConfig.text).width
         const gap = textWidth + 50
 
-        const centerX = area.x + area.width / 2
-        const centerY = area.y + area.height / 2
-
-        ctx.translate(centerX, centerY)
-        ctx.rotate((-30 * Math.PI) / 180)
-        ctx.translate(-centerX, -centerY)
-
-        for (let y = area.y - gap; y < area.y + area.height + gap; y += gap) {
-          for (let x = area.x - gap; x < area.x + area.width + gap; x += gap) {
+        for (let y = 0; y < area.height; y += gap) {
+          for (let x = 0; x < area.width; x += gap) {
             ctx.fillText(watermarkConfig.text, x, y)
           }
         }
@@ -1497,8 +1541,8 @@ const batchExport = async () => {
       ctx.restore()
     }
 
-     // 将画布转换为 blob
-     return new Promise(resolve => {
+    // 将画布转换为 blob
+    return new Promise(resolve => {
       canvas.toBlob(blob => {
         resolve(blob)
       }, 'image/png')
@@ -2782,7 +2826,7 @@ const drawWatermarkOnCanvas = (ctx, image, width, height) => {
   border: 2px solid #1976d2;
 }
 
-/* 修改颜色选择器样式 */
+/* 修改颜色��择器样式 */
 .color-picker-group {
   position: relative;
 }
