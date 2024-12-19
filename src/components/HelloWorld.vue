@@ -38,7 +38,7 @@ import JSZip from "jszip";
 const canvasRef = ref(null);
 const cropBoxRef = ref(null);
 const originalImage = ref(null);
-const currentNav = ref("");
+const currentNav = ref("files");
 const imageFiles = ref([]);
 const cropArea = ref({
   x: 0,
@@ -1641,7 +1641,7 @@ const handleExportBgColorChange = color => {
     </div>
 
     <!-- 左侧列表面板 -->
-    <div class="list-panel" v-show="currentNav">
+    <div class="list-panel">
       <!-- 文件列表 -->
       <template v-if="currentNav === 'files'">
         <div class="panel-header">
@@ -1684,16 +1684,6 @@ const handleExportBgColorChange = color => {
 
       <!-- 配置列表 -->
       <template v-else>
-        <div class="panel-header">
-          <h3>配置列表</h3>
-          <div class="config-input">
-            <el-input v-model="currentConfigName" placeholder="配置名称" size="small">
-              <template #append>
-                <el-button @click="saveConfig(currentConfigName)">保存</el-button>
-              </template>
-            </el-input>
-          </div>
-        </div>
         <div class="list-content">
           <div v-for="cfg in savedConfigs" :key="cfg.name" class="list-item">
             <div class="item-info">
@@ -2141,7 +2131,6 @@ const handleExportBgColorChange = color => {
   align-items: center;
   justify-content: center;
   border: 2px dashed #ddd;
-  margin: 16px;
   width: calc(100% - 32px);
   height: calc(100% - 32px);
   background: #fafafa;
