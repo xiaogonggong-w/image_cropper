@@ -603,7 +603,7 @@ const confirmCrop = () => {
   const ctx = canvas.getContext("2d");
   const area = cropArea.value;
 
-  // 设���输出画布大小
+  // 设���输出�����布大小
   canvas.width = area.width;
   canvas.height = area.height;
  console.log(config);
@@ -1178,12 +1178,12 @@ const saveConfig = name => {
   const newConfig = {
     name,
     timestamp: Date.now(),
-    data: {
+    data: deepClone({
       rotateAngle: config.rotateAngle,
       scale: config.scale,
-      watermark: { ...config.watermark },
-      export: { ...config.export }
-    }
+      watermark: config.watermark,
+      export: config.export
+    })
   };
 
   const index = savedConfigs.value.findIndex(c => c.name === name);
@@ -1201,17 +1201,43 @@ const saveConfig = name => {
   ElMessage.success("配置保存成功");
 };
 
-// 应用配置
-const applyConfig = configData => {
-  config.rotateAngle = configData.rotateAngle;
-  config.scale = configData.scale;
-  config.watermark = { ...config.watermark, ...configData.watermark };
-  config.export = { ...config.export, ...configData.export };
+// 修改应用配置方法，添加应用到所有文件的功能
+const applyConfig = (configData, applyToAll = false) => {
+  if (!applyToAll && currentFileIndex.value === -1) {
+    ElMessage.warning('请先选择一个文件')
+    return
+  }
+
+  // 创建新的配置对象
+  const newConfig = {
+    rotateAngle: configData.rotateAngle,
+    scale: configData.scale,
+    watermark: deepClone(configData.watermark),
+    export: deepClone(configData.export)
+  }
+
+  if (applyToAll) {
+    // 应用到所有文件
+    imageFiles.value.forEach(file => {
+      file.config = deepClone(newConfig)
+    })
+    // 更新当前配置
+    Object.assign(config, newConfig)
+    ElMessage.success('配置已应用到所有文件')
+  } else {
+    // 只应用到当前文件
+    Object.assign(config, newConfig)
+    // 保存到当前文件
+    const index = imageFiles.value.findIndex(file => file.key === currentFileIndex.value)
+    if (index !== -1) {
+      imageFiles.value[index].config = deepClone(config)
+    }
+    ElMessage.success('配置应用成功')
+  }
 
   // 更新画布
-  handleCanvasDraw();
-  ElMessage.success("配置应用成功");
-};
+  handleCanvasDraw()
+}
 
 // 删除配置
 const deleteConfig = name => {
@@ -1450,7 +1476,13 @@ const batchExport = async () => {
         ctx.textBaseline = 'top'
         const textWidth = ctx.measureText(watermarkConfig.text).width
         const gap = textWidth + 50
+ // 设置旋转中心点为裁剪框中心
+ const centerX = area.x + area.width / 2;
+    const centerY = area.y + area.height / 2;
 
+    ctx.translate(centerX, centerY);
+    ctx.rotate((-30 * Math.PI) / 180);
+    ctx.translate(-centerX, -centerY);
         for (let y = 0; y < canvas.height; y += gap) {
           for (let x = 0; x < canvas.width; x += gap) {
             ctx.fillText(watermarkConfig.text, x, y)
@@ -1692,6 +1724,7 @@ const handleExportBgColorChange = color => {
             </div>
             <div class="item-actions">
               <el-button type="primary" size="small" @click="applyConfig(cfg.data)">应用</el-button>
+              <el-button type="success" size="small" @click="applyConfig(cfg.data, true)">应用到所有</el-button>
               <el-button type="danger" size="small" @click="deleteConfig(cfg.name)">删除</el-button>
             </div>
           </div>
@@ -1733,7 +1766,7 @@ const handleExportBgColorChange = color => {
           <div ref="cropBoxRef" class="crop-box" :data-shape="cropArea.cropShape" @mousedown="handleCropBoxMouseDown" :style="{
             pointerEvents: ['mosaic', 'brush'].includes(currentTool) ? 'none' : 'auto'
           }">
-            <!-- 四角的控制点 -->
+            <!-- 四角的控制�� -->
             <div class="resize-handle corner top-left" @mousedown="(e) => handleResizeMouseDown(e, 'top-left')"></div>
             <div class="resize-handle corner top-right" @mousedown="(e) => handleResizeMouseDown(e, 'top-right')"></div>
             <div class="resize-handle corner bottom-left" @mousedown="(e) => handleResizeMouseDown(e, 'bottom-left')">
@@ -2021,7 +2054,7 @@ const handleExportBgColorChange = color => {
         <!-- 原有的操作按钮 -->
         <div class="operation-buttons">
           <el-button type="danger" :disabled="!originalImage" @click="originalImage = null">取消编辑</el-button>
-          <el-button type="primary" :disabled="!originalImage" @click="confirmCrop">确认裁剪</el-button>
+          <el-button type="primary" :disabled="!originalImage" @click="confirmCrop">导出当前图片</el-button>
         </div>
       </div>
     </div>
@@ -3016,6 +3049,7 @@ const handleExportBgColorChange = color => {
   margin-bottom: 8px;
   cursor: pointer;
   transition: all 0.3s;
+  flex-direction: column;
 }
 
 .list-item:hover {
