@@ -105,6 +105,9 @@ function handleCanvasDraw() {
 
   const ctx = canvasRef.value.getContext("2d");
   const canvas = canvasRef.value;
+  const container = containerRef.value;
+  canvas.width = container.offsetWidth;
+  canvas.height = container.offsetHeight;
 
   // 清空画布
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -124,6 +127,7 @@ function handleCanvasDraw() {
     canvas.height / imagePosition.value.height
   );
   const finalScale = baseScale * (config.scale / 100);
+  console.log(canvas.width, canvas.height, baseScale, finalScale, imagePosition.value);
 
   // 绘制图片
   ctx.drawImage(
@@ -603,7 +607,7 @@ const confirmCrop = () => {
   const ctx = canvas.getContext("2d");
   const area = cropArea.value;
 
-  // 设���输出�����布大小
+  // 设���输出�������布大小
   canvas.width = area.width;
   canvas.height = area.height;
  console.log(config);
@@ -1219,11 +1223,59 @@ const applyConfig = (configData, applyToAll = false) => {
   if (applyToAll) {
     // 应用到所有文件
     imageFiles.value.forEach(file => {
-      file.config = deepClone(newConfig)
-    })
+
+      const img = file.image; // 获取当前文件的图片
+      const container = containerRef.value;
+      const canvas = {
+        width: 0,
+        height: 0
+      }
+  
+      // 设置画布大小
+      canvas.width = container.offsetWidth;
+      canvas.height = container.offsetHeight;
+
+      const scale = Math.min(
+        canvas.width / img.width,
+        canvas.height / img.height
+      );
+
+      const scaledWidth = img.width * scale;
+      const scaledHeight = img.height * scale;
+      const x = (canvas.width - scaledWidth) / 2;
+      const y = (canvas.height - scaledHeight) / 2;
+
+      const cropWidth = Math.min(scaledWidth * 0.8, canvas.width * 0.8);
+      const cropHeight = (cropWidth * 9) / 16;
+      // 获取 imagePosition 和 cropArea
+      const imgPosition = {
+        x: x,
+        y: y,
+        width: img.width,
+        height: img.height,
+        scale: scale,
+        rotatedWidth: scaledWidth,
+        rotatedHeight: scaledHeight
+      };
+      const area = {
+        x: x + (scaledWidth - cropWidth) / 2,
+        y: y + (scaledHeight - cropHeight) / 2,
+        width: cropWidth,
+        height: cropHeight,
+        isDragging: false,
+        isResizing: false,
+        cropShape: "rect"
+      };
+
+      // 将获取的值赋给 imageFiles
+      file.imagePosition = imgPosition;
+      file.cropInfo = { area };
+
+      file.config = deepClone(newConfig);
+    });
     // 更新当前配置
-    Object.assign(config, newConfig)
-    ElMessage.success('配置已应用到所有文件')
+    Object.assign(config, newConfig);
+    ElMessage.success('配置已应用到所有文件');
   } else {
     // 只应用到当前文件
     Object.assign(config, newConfig)
@@ -1751,7 +1803,7 @@ const handleExportBgColorChange = color => {
             </div>
             <div class="upload-text">
               <h3>上传图片</h3>
-              <p>点击选择或拖拽图片到此处</p>
+              <p>点击��择或拖拽图片到此处</p>
               <span class="upload-hint">支持 JPG、PNG、GIF 等格式</span>
             </div>
           </label>
@@ -1784,27 +1836,27 @@ const handleExportBgColorChange = color => {
       </div>
 
       <!-- 底部工具栏 -->
-      <div v-if="originalImage" class="bottom-toolbar">
+      <div class="bottom-toolbar">
         <el-tooltip content="马赛克" placement="top">
-          <div class="tool-item" :class="{ active: currentTool === 'mosaic' }" @click="toggleTool('mosaic')">
+          <div  class="tool-item" :class="{ active: currentTool === 'mosaic', disabled: !originalImage }" @click="toggleTool('mosaic')">
             <img :src="msk" alt="马赛克" style="width: 1em; height: 1em;" />
           </div>
         </el-tooltip>
 
         <el-tooltip content="画笔" placement="top">
-          <div class="tool-item" :class="{ active: currentTool === 'brush' }" @click="toggleTool('brush')">
+          <div  class="tool-item" :class="{ active: currentTool === 'brush', disabled: !originalImage }" @click="toggleTool('brush')">
             <img :src="hb" alt="画笔" style="width: 1em; height: 1em;" />
           </div>
         </el-tooltip>
 
         <el-tooltip content="撤销" placement="top">
-          <div class="tool-item" :class="{ disabled: !drawHistory.length }" @click="drawHistory.length && undoDraw()">
+          <div  class="tool-item" :class="{ disabled: !drawHistory.length || !originalImage }" @click="drawHistory.length && undoDraw()">
             <img :src="undo" alt="撤销" style="width: 1em; height: 1em;" />
           </div>
         </el-tooltip>
 
         <el-tooltip content="恢复" placement="top">
-          <div class="tool-item" :class="{ disabled: !redoHistory.length }" @click="redoHistory.length && redoDraw()">
+          <div  class="tool-item" :class="{ disabled: !redoHistory.length || !originalImage }" @click="redoHistory.length && redoDraw()">
             <img :src="redo" alt="恢复" style="width: 1em; height: 1em;" />
           </div>
         </el-tooltip>
@@ -2359,7 +2411,7 @@ const handleExportBgColorChange = color => {
   text-align: center;
 }
 
-/* 添加点击空白处关闭拉面的处理 */
+/* 添加点击空白处关���拉面的处理 */
 @media (max-width: 768px) {
   .ratio-options {
     position: fixed;
